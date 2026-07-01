@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
   <style>
     :root {
       --bg:#0a0e1a; --surface:#111827; --surface2:#1a2235; --border:#1e293b;
@@ -18,6 +19,7 @@
     .header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
     .header-title{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;}
     .header-title span{color:var(--gold);}
+    .header-lista{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);margin-top:2px;opacity:0.8;}
     .header-meta{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-top:3px;}
     .header-actions{display:flex;gap:8px;}
     .btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 14px;border-radius:6px;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;transition:background .15s;}
@@ -89,6 +91,7 @@
 <div class="header">
   <div>
     <div class="header-title">🔥 <span>Los 40 Principales</span> — Acciones USA</div>
+    <div class="header-lista">📋 Lista revisada: 01/07/2026</div>
     <div class="header-meta" id="last-update">Conectando con los mercados...</div>
   </div>
   <div class="header-actions">
@@ -154,6 +157,7 @@ const STOCKS = [
   {t:'AMAT', n:'Applied Materials',   s:'Semis'},
   {t:'LRCX', n:'Lam Research',        s:'Semis'},
   {t:'KLAC', n:'KLA Corp',            s:'Semis'},
+  {t:'MRVL', n:'Marvell Technology',  s:'Semis'},
   // IA & DATOS
   {t:'MSFT', n:'Microsoft',           s:'IA'},
   {t:'GOOGL',n:'Alphabet',            s:'IA'},
@@ -170,7 +174,7 @@ const STOCKS = [
   {t:'ZS',   n:'Zscaler',             s:'Cloud'},
   {t:'PANW', n:'Palo Alto Networks',  s:'Cloud'},
   {t:'FTNT', n:'Fortinet',            s:'Cloud'},
-  {t:'OKTA', n:'Okta',                s:'Cloud'},
+  {t:'ALAB', n:'Astera Labs',          s:'Cloud'},
   // INFRAESTRUCTURA IA
   {t:'SMCI', n:'Super Micro Computer',s:'Infraestructura'},
   {t:'WDC',  n:'Western Digital',     s:'Infraestructura'},
@@ -187,7 +191,6 @@ const STOCKS = [
   {t:'COIN', n:'Coinbase',            s:'Fintech'},
   {t:'MELI', n:'MercadoLibre',        s:'Fintech'},
   {t:'SHOP', n:'Shopify',             s:'Fintech'},
-  {t:'MSTR', n:'MicroStrategy',       s:'Fintech'},
   {t:'UBER', n:'Uber Technologies',   s:'Fintech'},
 ];
 
@@ -242,7 +245,9 @@ async function fetchStock(ticker) {
   const meta       = chart.meta || {};
   const price      = meta.regularMarketPrice || null;
   const prevClose  = meta.previousClose || meta.chartPreviousClose || null;
-  const dailyChg   = (price && prevClose) ? ((price - prevClose) / prevClose) * 100 : null;
+  const dailyChg   = meta.regularMarketChangePercent != null
+    ? meta.regularMarketChangePercent
+    : (price && prevClose) ? ((price - prevClose) / prevClose) * 100 : null;
   const vol        = meta.regularMarketVolume || null;
   const avgVol     = meta.fiftyDayAverageVolume || null;
 
