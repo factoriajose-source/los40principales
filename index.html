@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Los 40 Principales 🔥</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root{--bg:#0a0e1a;--sf:#111827;--sf2:#1a2235;--bd:#1e293b;--tx:#e2e8f0;--mu:#64748b;--gr:#22c55e;--rd:#ef4444;--go:#f0c040;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:var(--bg);color:var(--tx);font-family:'Inter',sans-serif;min-height:100vh;}
+
+    .hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:13px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+    .hdr-t{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;}
+    .hdr-t span{color:var(--go);}
+    .hdr-s{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--go);margin-top:2px;opacity:.8;}
+    .hdr-m{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--mu);margin-top:2px;}
+    .hdr-b{display:flex;gap:8px;}
+    .btn{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);padding:7px 13px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:background .15s;}
+    .btn:hover{background:var(--bd);}
+    .btn-go{background:var(--go);color:#000;border-color:var(--go);font-weight:700;}
+    .btn-go:hover{background:#d4a800;}
+
+    .srcbar{background:#0d1424;border-bottom:1px solid #38bdf822;padding:7px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:12px;font-family:'JetBrains Mono',monospace;}
+    .src-ok{color:var(--gr);} .src-mu{color:var(--mu);} .src-er{color:var(--rd);}
+
+    .stats{background:var(--sf);border-bottom:1px solid var(--bd);padding:9px 22px;display:flex;gap:22px;flex-wrap:wrap;}
+    .stat{display:flex;align-items:center;gap:6px;font-size:13px;}
+    .slb{color:var(--mu);} .svl{font-weight:600;font-family:'JetBrains Mono',monospace;}
+    .cg{color:var(--gr);} .cr{color:var(--rd);} .cy{color:var(--go);}
+
+    .filt{padding:9px 22px;display:flex;gap:7px;flex-wrap:wrap;}
+    .fb{background:transparent;border:1px solid var(--bd);color:var(--mu);padding:4px 11px;border-radius:20px;cursor:pointer;font-size:12px;transition:all .15s;}
+    .fb:hover,.fb.on{background:var(--go);color:#000;border-color:var(--go);font-weight:600;}
+
+    .lw{background:var(--bd);height:3px;}
+    .lb{height:100%;background:linear-gradient(90deg,var(--go),var(--gr));width:0%;transition:width .4s;}
+    .lt{text-align:center;padding:5px;font-size:11px;color:var(--mu);font-family:'JetBrains Mono',monospace;min-height:19px;}
+
+    .ban{margin:10px 22px;padding:9px 13px;border-radius:6px;font-size:13px;display:none;}
+    .bw{background:#f0c04015;border:1px solid var(--go);color:var(--go);}
+    .be{background:#ef444415;border:1px solid var(--rd);color:var(--rd);}
+
+    .tw{overflow-x:auto;padding:0 22px 30px;}
+    table{width:100%;border-collapse:collapse;font-size:13px;}
+    thead th{text-align:left;padding:9px 8px;font-size:11px;font-weight:600;color:var(--mu);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bd);cursor:pointer;user-select:none;white-space:nowrap;}
+    thead th:hover{color:var(--tx);} thead th.on{color:var(--go);}
+    tbody tr{border-bottom:1px solid #1e293b33;transition:background .1s;}
+    tbody tr:hover{background:var(--sf);}
+    tbody tr.ex{background:#f0c04008;} tbody tr.ex:hover{background:#f0c04015;}
+    td{padding:9px 8px;vertical-align:middle;white-space:nowrap;}
+    .rk{font-family:'JetBrains Mono',monospace;color:var(--mu);font-size:11px;}
+    .tk{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;}
+    .tk.gl{text-shadow:0 0 10px var(--go);color:var(--go);}
+    .cn{color:var(--mu);font-size:12px;margin-top:1px;}
+    .bg{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;border:1px solid;}
+    .ch{font-family:'JetBrains Mono',monospace;font-weight:600;text-align:right;}
+    .pr{font-family:'JetBrains Mono',monospace;font-weight:600;text-align:right;}
+    .pos{color:var(--gr);} .neg{color:var(--rd);} .neu{color:var(--mu);}
+    .scw{display:flex;align-items:center;gap:7px;min-width:110px;}
+    .scb{flex:1;height:6px;background:var(--bd);border-radius:3px;overflow:hidden;}
+    .scf{height:100%;border-radius:3px;}
+    .scn{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;min-width:22px;text-align:right;}
+    .sk{display:inline-block;height:12px;border-radius:4px;vertical-align:middle;background:linear-gradient(90deg,var(--sf2) 25%,var(--bd) 50%,var(--sf2) 75%);background-size:200% 100%;animation:sh 1.4s infinite;}
+    @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .sS{color:#a78bfa;border-color:#a78bfa55;background:#a78bfa11;}
+    .sI{color:#38bdf8;border-color:#38bdf855;background:#38bdf811;}
+    .sC{color:#34d399;border-color:#34d39955;background:#34d39911;}
+    .sN{color:#fb923c;border-color:#fb923c55;background:#fb923c11;}
+    .sR{color:#e879f9;border-color:#e879f955;background:#e879f911;}
+    .sF{color:#fbbf24;border-color:#fbbf2455;background:#fbbf2411;}
+    .sSP{color:#94a3b8;border-color:#94a3b855;background:#94a3b811;}
+    .sETF{color:#38bdf8;border-color:#38bdf855;background:#38bdf811;}
+    /* MODAL EDICIÓN */
+    .modal-bg{position:fixed;inset:0;background:#000a;z-index:200;display:none;align-items:center;justify-content:center;padding:16px;}
+    .modal-bg.open{display:flex;}
+    .modal{background:var(--sf);border:1px solid var(--go);border-radius:12px;width:100%;max-width:680px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;}
+    .modal-hdr{padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;}
+    .modal-hdr h3{font-family:'JetBrains Mono',monospace;color:var(--go);font-size:16px;}
+    .modal-body{overflow-y:auto;padding:16px 20px;flex:1;}
+    .modal-ftr{padding:12px 20px;border-top:1px solid var(--bd);display:flex;gap:8px;flex-wrap:wrap;}
+    .edit-list{display:flex;flex-direction:column;gap:4px;margin-bottom:20px;}
+    .edit-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--sf2);font-size:12px;}
+    .edit-row:hover{background:var(--bd);}
+    .edit-tk{font-family:'JetBrains Mono',monospace;font-weight:700;min-width:70px;color:var(--tx);}
+    .edit-nm{flex:1;color:var(--mu);}
+    .edit-del{background:#ef444433;border:1px solid #ef444444;color:var(--rd);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;flex-shrink:0;}
+    .edit-del:hover{background:var(--rd);color:#fff;}
+    .add-form{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:14px;margin-top:4px;}
+    .add-form h4{font-size:13px;color:var(--go);margin-bottom:12px;font-family:'JetBrains Mono',monospace;}
+    .add-full{margin-bottom:10px;}
+    .add-full input,.add-form select{width:100%;background:var(--bg);border:1px solid var(--bd);color:var(--tx);padding:7px 10px;border-radius:5px;font-size:13px;font-family:'Inter',sans-serif;}
+    .add-full input:focus,.add-form select:focus{outline:none;border-color:var(--go);}
+    .add-form select option{background:var(--sf);}
+    .btn-add{background:var(--go);color:#000;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;}
+    .btn-rst{background:transparent;border:1px solid var(--mu);color:var(--mu);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:13px;}
+    .btn-rst:hover{border-color:var(--rd);color:var(--rd);}
+    @media(max-width:900px){.hm{display:none;}}
+    @media(max-width:600px){.hdr,.srcbar,.stats,.filt,.tw{padding-left:13px;padding-right:13px;}}
+  </style>
+</head>
+<body>
+
+<!-- NAVEGACIÓN -->
+<div style="background:#070b14;border-bottom:1px solid #1e293b;padding:8px 22px;display:flex;align-items:center;gap:10px;">
+  <span style="padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;background:#f0c040;color:#000;border:1px solid #f0c040;">🏢 Acciones</span>
+  <span style="color:#1e293b;font-size:18px;">|</span>
+  <a href="40_etfs.html" style="padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;background:transparent;color:#64748b;border:1px solid #1e293b;text-decoration:none;transition:all .15s;" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#64748b'">📊 ETFs</a>
+  <span style="color:#1e293b;font-size:18px;">|</span>
+  <button onclick="setF('OPP')" style="padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;background:transparent;color:#f0c040;border:1px solid #f0c04066;cursor:pointer;font-family:'Inter',sans-serif;">💎 Oportunidades</button>
+</div>
+
+<div class="hdr">
+  <div>
+    <div class="hdr-t">🔥 <span>Los 40 Principales</span> — Acciones USA</div>
+    <div class="hdr-s">📋 Lista revisada: 01/07/2026</div>
+    <div class="hdr-m" id="upd">Conectando...</div>
+  </div>
+  <div class="hdr-b">
+    <button class="btn" style="border-color:#f0c04066;" onclick="openEdit()">✏️ Editar Lista</button>
+    <button class="btn" onclick="refreshData()">↻ Actualizar</button>
+    <button class="btn btn-go" onclick="exportExcel()">↓ Excel</button>
+  </div>
+</div>
+
+<div class="srcbar">
+  <span class="src-mu">📡 Fuente: Yahoo Finance · Sin registro · Sin límites</span>
+  <span id="proxy-st" class="src-mu"></span>
+</div>
+
+<div class="stats" id="stats"><div class="stat"><span class="slb">Cargando mercado...</span></div></div>
+
+<div class="filt">
+  <button class="fb on" onclick="setF('T')">Todos (40)</button>
+  <button class="fb" onclick="setF('S')">💜 Semiconductores</button>
+  <button class="fb" onclick="setF('I')">🔵 IA & Datos</button>
+  <button class="fb" onclick="setF('C')">🟢 Cloud & Ciber.</button>
+  <button class="fb" onclick="setF('N')">🟠 Infraestructura</button>
+  <button class="fb" onclick="setF('R')">🟣 Robótica</button>
+  <button class="fb" onclick="setF('F')">🟡 Fintech</button>
+</div>
+
+<!-- 🔎 ANALIZADOR DE CUALQUIER ACCIÓN -->
+<div style="padding:2px 22px 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+  <input id="lkInp" placeholder="🔎 Analiza cualquier acción o ETF (ej: INTC, VTI, EQQQ.DE...)" autocomplete="off"
+    style="flex:1;min-width:220px;max-width:400px;background:#1a2235;border:1px solid #1e293b;color:#e2e8f0;padding:7px 12px;border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;"
+    onkeydown="if(event.key==='Enter')lookup()">
+  <button class="btn btn-go" onclick="lookup()" style="padding:7px 16px;">Analizar</button>
+</div>
+<div id="lkCard" style="display:none;margin:0 22px 12px;padding:14px 16px;border:1px solid #f0c04055;border-radius:8px;background:#111827;font-size:13px;line-height:1.7;"></div>
+
+<div class="lw"><div class="lb" id="lb"></div></div>
+<div class="lt" id="lt"></div>
+<div class="ban bw" id="bw"></div>
+<div class="ban be" id="be"></div>
+
+<div class="tw"><table>
+  <thead><tr>
+    <th style="width:26px">#</th>
+    <th onclick="srt('t')">Ticker ↕</th>
+    <th>Empresa</th>
+    <th class="hm">Sector</th>
+    <th onclick="srt('price')" style="text-align:right">Precio ↕</th>
+    <th onclick="srt('d')"   style="text-align:right">Día ↕</th>
+    <th onclick="srt('w')"   style="text-align:right" class="hm">Semana ↕</th>
+    <th onclick="srt('m')"   style="text-align:right" class="hm">Mes ↕</th>
+    <th onclick="srt('ytd')" style="text-align:right">YTD ↕</th>
+    <th onclick="srt('yr')"  style="text-align:right" class="hm">1 Año ↕</th>
+    <th onclick="srt('sc')" class="on">💥 Score ↕</th>
+  </tr></thead>
+  <tbody id="tb"></tbody>
+</table></div>
+
+<!-- MODAL EDICIÓN -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3>✏️ Editar Lista de Acciones</h3>
+      <button class="btn" onclick="closeEdit()" style="padding:4px 10px">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:var(--mu);margin-bottom:8px;">Lista actual — pulsa 🗑️ para eliminar una acción:</div>
+      <div class="edit-list" id="edit-list"></div>
+      <div class="add-form">
+        <h4>➕ Añadir nueva acción</h4>
+        <div class="add-full"><input id="add-t" placeholder="Ticker (ej: INTC)" autocomplete="off"></div>
+        <div class="add-full"><input id="add-n" placeholder="Nombre de la empresa (ej: Intel)" autocomplete="off"></div>
+        <select id="add-s">
+          <option value="S">💜 Semiconductores</option>
+          <option value="I">🔵 IA & Datos</option>
+          <option value="C">🟢 Cloud & Ciberseguridad</option>
+          <option value="N">🟠 Infraestructura</option>
+          <option value="R">🟣 Robótica & Espacio</option>
+          <option value="F">🟡 Fintech & Otros</option>
+        </select>
+        <button class="btn-add" onclick="addStock()">➕ Añadir a la lista</button>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-go" onclick="saveEdit()">✅ Guardar y cerrar</button>
+      <button class="btn-rst" onclick="resetList()">🔄 Restaurar lista original</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// LOS 40 PRINCIPALES — v6  Yahoo Finance (sin API key)
+// ════════════════════════════════════════════════════════════
+const DEFAULT_STOCKS = [
+  {t:'NVDA',n:'Nvidia',              s:'S'},{t:'AMD', n:'AMD',              s:'S'},
+  {t:'AVGO',n:'Broadcom',            s:'S'},{t:'MU',  n:'Micron Technology', s:'S'},
+  {t:'SNDK',n:'SanDisk',             s:'S'},{t:'TSM', n:'TSMC',              s:'S'},
+  {t:'ARM', n:'Arm Holdings',        s:'S'},{t:'AMAT',n:'Applied Materials', s:'S'},
+  {t:'LRCX',n:'Lam Research',        s:'S'},{t:'KLAC',n:'KLA Corp',          s:'S'},
+  {t:'MRVL',n:'Marvell Technology',  s:'S'},
+  {t:'MSFT',n:'Microsoft',           s:'I'},{t:'GOOGL',n:'Alphabet',         s:'I'},
+  {t:'META',n:'Meta',                s:'I'},{t:'ORCL', n:'Oracle',            s:'I'},
+  {t:'PLTR',n:'Palantir',            s:'I'},{t:'SNOW', n:'Snowflake',         s:'I'},
+  {t:'DDOG',n:'Datadog',             s:'I'},{t:'NOW',  n:'ServiceNow',        s:'I'},
+  {t:'AMZN',n:'Amazon',              s:'C'},{t:'CRWD',n:'CrowdStrike',       s:'C'},
+  {t:'NET', n:'Cloudflare',          s:'C'},{t:'ZS',  n:'Zscaler',           s:'C'},
+  {t:'PANW',n:'Palo Alto Networks',  s:'C'},{t:'ALAB',n:'Astera Labs',       s:'C'},
+  {t:'SMCI',n:'Super Micro Computer',s:'N'},{t:'WDC', n:'Western Digital',   s:'N'},
+  {t:'STX', n:'Seagate',             s:'N'},{t:'PURE',n:'Pure Storage',      s:'N'},
+  {t:'DELL',n:'Dell Technologies',   s:'N'},
+  {t:'TSLA',n:'Tesla',               s:'R'},{t:'RKLB',n:'Rocket Lab',        s:'R'},
+  {t:'AXON',n:'Axon Enterprise',     s:'R'},{t:'PATH',n:'UiPath',            s:'R'},
+  {t:'IONQ',n:'IonQ',                s:'R'},
+  {t:'COIN',n:'Coinbase',            s:'F'},{t:'MELI',n:'MercadoLibre',      s:'F'},
+  {t:'SHOP',n:'Shopify',             s:'F'},{t:'FTNT',n:'Fortinet',          s:'F'},
+  {t:'UBER',n:'Uber Technologies',   s:'F'},
+];
+const SN={S:'Semis',I:'IA',C:'Cloud',N:'Infra',R:'Robótica',F:'Fintech',SP:'S&P 500',ETF:'ETF'};
+
+// Lista editable guardada en el navegador
+const LS_LIST='stocks40_list_v1';
+let STOCKS=JSON.parse(localStorage.getItem(LS_LIST))||[...DEFAULT_STOCKS];
+
+// ── 💎 UNIVERSO AMPLIO para el escáner de oportunidades ──
+// ~100 grandes del S&P 500 + 20 ETFs USA (además de tus 40 acciones)
+const UNIVERSE=[
+ {t:'AAPL',n:'Apple'},{t:'BRK-B',n:'Berkshire Hathaway'},{t:'LLY',n:'Eli Lilly'},{t:'V',n:'Visa'},
+ {t:'JPM',n:'JPMorgan'},{t:'WMT',n:'Walmart'},{t:'MA',n:'Mastercard'},{t:'XOM',n:'Exxon Mobil'},
+ {t:'UNH',n:'UnitedHealth'},{t:'PG',n:'Procter & Gamble'},{t:'COST',n:'Costco'},{t:'JNJ',n:'Johnson & Johnson'},
+ {t:'HD',n:'Home Depot'},{t:'NFLX',n:'Netflix'},{t:'BAC',n:'Bank of America'},{t:'ABBV',n:'AbbVie'},
+ {t:'CVX',n:'Chevron'},{t:'KO',n:'Coca-Cola'},{t:'MRK',n:'Merck'},{t:'CRM',n:'Salesforce'},
+ {t:'ADBE',n:'Adobe'},{t:'PEP',n:'PepsiCo'},{t:'TMO',n:'Thermo Fisher'},{t:'CSCO',n:'Cisco'},
+ {t:'ACN',n:'Accenture'},{t:'MCD',n:'McDonalds'},{t:'ABT',n:'Abbott'},{t:'INTC',n:'Intel'},
+ {t:'WFC',n:'Wells Fargo'},{t:'IBM',n:'IBM'},{t:'GE',n:'GE Aerospace'},{t:'QCOM',n:'Qualcomm'},
+ {t:'TXN',n:'Texas Instruments'},{t:'DIS',n:'Disney'},{t:'CAT',n:'Caterpillar'},{t:'VZ',n:'Verizon'},
+ {t:'INTU',n:'Intuit'},{t:'AMGN',n:'Amgen'},{t:'ISRG',n:'Intuitive Surgical'},{t:'PFE',n:'Pfizer'},
+ {t:'GS',n:'Goldman Sachs'},{t:'RTX',n:'RTX Corp'},{t:'BKNG',n:'Booking'},{t:'SPGI',n:'S&P Global'},
+ {t:'HON',n:'Honeywell'},{t:'T',n:'AT&T'},{t:'LOW',n:'Lowes'},{t:'UNP',n:'Union Pacific'},
+ {t:'BLK',n:'BlackRock'},{t:'SYK',n:'Stryker'},{t:'ELV',n:'Elevance'},{t:'TJX',n:'TJX'},
+ {t:'VRTX',n:'Vertex Pharma'},{t:'LMT',n:'Lockheed Martin'},{t:'C',n:'Citigroup'},{t:'BA',n:'Boeing'},
+ {t:'ADI',n:'Analog Devices'},{t:'MS',n:'Morgan Stanley'},{t:'MDT',n:'Medtronic'},{t:'DE',n:'John Deere'},
+ {t:'GILD',n:'Gilead'},{t:'REGN',n:'Regeneron'},{t:'ADP',n:'ADP'},{t:'CDNS',n:'Cadence'},
+ {t:'SNPS',n:'Synopsys'},{t:'BSX',n:'Boston Scientific'},{t:'MMC',n:'Marsh McLennan'},{t:'ETN',n:'Eaton'},
+ {t:'PGR',n:'Progressive'},{t:'SCHW',n:'Charles Schwab'},{t:'CI',n:'Cigna'},{t:'FDX',n:'FedEx'},
+ {t:'NKE',n:'Nike'},{t:'SBUX',n:'Starbucks'},{t:'GM',n:'General Motors'},{t:'F',n:'Ford'},
+ {t:'ANET',n:'Arista Networks'},{t:'APP',n:'AppLovin'},{t:'CEG',n:'Constellation Energy'},{t:'VST',n:'Vistra'},
+ {t:'VRT',n:'Vertiv'},{t:'PWR',n:'Quanta Services'},{t:'HWM',n:'Howmet Aerospace'},{t:'URI',n:'United Rentals'},
+ {t:'ABNB',n:'Airbnb'},{t:'DASH',n:'DoorDash'},{t:'SPOT',n:'Spotify'},{t:'PYPL',n:'PayPal'},
+ {t:'ADSK',n:'Autodesk'},{t:'WDAY',n:'Workday'},{t:'TEAM',n:'Atlassian'},{t:'MDB',n:'MongoDB'},
+ {t:'ON',n:'ON Semiconductor'},{t:'NXPI',n:'NXP Semiconductors'},{t:'MPWR',n:'Monolithic Power'},{t:'TER',n:'Teradyne'},
+ {t:'MCHP',n:'Microchip'},{t:'COHR',n:'Coherent'},{t:'GEV',n:'GE Vernova'},{t:'AXP',n:'American Express'},
+];
+const ETF_USA=[
+ {t:'QQQ',n:'Invesco Nasdaq-100'},{t:'SPY',n:'SPDR S&P 500'},{t:'XLK',n:'Technology SPDR'},
+ {t:'SMH',n:'VanEck Semiconductores'},{t:'SOXX',n:'iShares Semiconductores'},{t:'BOTZ',n:'Global X Robótica'},
+ {t:'AIQ',n:'Global X IA'},{t:'CIBR',n:'First Trust Ciber'},{t:'CLOU',n:'Global X Cloud'},
+ {t:'MAGS',n:'Magnificent 7'},{t:'ARKK',n:'ARK Innovation'},{t:'VGT',n:'Vanguard IT'},
+ {t:'IWM',n:'Russell 2000'},{t:'XLV',n:'Health Care SPDR'},{t:'XLF',n:'Financial SPDR'},
+ {t:'XLE',n:'Energy SPDR'},{t:'GLD',n:'SPDR Gold'},{t:'IBIT',n:'iShares Bitcoin'},
+ {t:'ICLN',n:'iShares Clean Energy'},{t:'HACK',n:'ETFMG Ciber'},
+];
+// Une: tus 40 + universo S&P + ETFs USA (sin duplicados)
+function OPP_ALL(){
+  const seen={}, out=[];
+  STOCKS.forEach(x=>{if(!seen[x.t]){seen[x.t]=1;out.push({...x});}});
+  UNIVERSE.forEach(x=>{if(!seen[x.t]){seen[x.t]=1;out.push({...x,s:'SP'});}});
+  ETF_USA.forEach(x=>{if(!seen[x.t]){seen[x.t]=1;out.push({...x,s:'ETF'});}});
+  return out;
+}
+
+// ── Cache ──────────────────────────────────────────────────
+const TTL_Q = 20*60*1000;   // cotización: 20 min
+const TTL_H = 6*60*60*1000; // histórico:  6 horas
+function cG(k){try{return JSON.parse(localStorage.getItem(k))?.d??null;}catch{return null;}}
+function cS(k,d,ttl){try{localStorage.setItem(k,JSON.stringify({ts:Date.now(),ttl,d}));}catch{}}
+function cOk(k,ttl){try{const r=JSON.parse(localStorage.getItem(k));return r&&(Date.now()-r.ts)<ttl;}catch{return false;}}
+function cAll(){Object.keys(localStorage).forEach(k=>{if(k.startsWith('yq_')||k.startsWith('yh_'))localStorage.removeItem(k);});}
+
+// ── CORS Proxies (se rotan si uno falla) ──────────────────
+const PROXIES=[
+  u=>`https://corsproxy.io/?${encodeURIComponent(u)}`,
+  u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+  u=>`https://thingproxy.freeboard.io/fetch/${u}`,
+  u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+];
+let proxyIdx=0;
+
+async function yFetch(url){
+  // Intenta los 4 proxies en orden, empieza por el que funcionó la última vez
+  for(let i=0;i<PROXIES.length;i++){
+    const pi=(proxyIdx+i)%PROXIES.length;
+    try{
+      const r=await fetch(PROXIES[pi](url),{signal:AbortSignal.timeout(9000)});
+      if(!r.ok) continue;
+      let j=await r.json();
+      if(j.contents) j=JSON.parse(j.contents); // allorigins wrapper
+      if(j?.chart?.result){
+        proxyIdx=pi; // guardar el que funcionó
+        document.getElementById('proxy-st').textContent=`· Proxy ${pi+1} activo`;
+        return j;
+      }
+    }catch{continue;}
+  }
+  return null;
+}
+
+// ── Fetch datos de una acción (precio + histórico 1 año) ──
+async function fetchStock(ticker){
+  const qk='yq_'+ticker, hk='yh_'+ticker;
+  const qOk=cOk(qk,TTL_Q), hOk=cOk(hk,TTL_H);
+  if(qOk&&hOk) return {...(cG(qk)||{}), ...(cG(hk)||{})};
+
+  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`;
+  const j=await yFetch(url);
+  if(!j) return {...(cG(qk)||{}), ...(cG(hk)||{})};
+
+  const chart=j?.chart?.result?.[0];
+  if(!chart) return {};
+  const meta=chart.meta||{};
+  const ts=chart.timestamp||[];
+  const px=chart.indicators?.quote?.[0]?.close||[];
+
+  // Array de entradas válidas ordenadas del más antiguo al más reciente
+  const en=ts.map((t,i)=>({t,p:px[i]})).filter(e=>e.p!=null&&e.p>0);
+  if(en.length<5) return {};
+
+  const last=en.length-1;
+  // Precio actual: usar meta (más preciso en intradía), sino último cierre
+  const price=meta.regularMarketPrice||en[last].p;
+  const pct=(old)=>old?((price-old)/old*100):null;
+
+  // ── Cotización (caché corta) ──
+  // CORRECCIÓN DÍA: usar meta.previousClose (cierre real de ayer, no del array)
+  // meta.previousClose = ayer exacto
+  // meta.chartPreviousClose = hace 1 año (NO usar para día)
+  const prevClose = meta.previousClose || en[Math.max(0,last-1)].p;
+  const dailyChg = (prevClose && prevClose > 0 && price !== prevClose)
+    ? (price - prevClose) / prevClose * 100
+    : null;
+
+  const vol=meta.regularMarketVolume||null;
+  const avgVol=meta.fiftyDayAverageVolume||null;
+
+  // Validación: precio mínimo razonable para evitar datos erróneos de Yahoo
+  if(!price || price < 0.5) return cG(qk)||{};
+
+  const qData={price, d:dailyChg, vol, avgVol};
+  cS(qk, qData, TTL_Q);
+
+  // ── Histórico (caché larga) ──
+  // CORRECCIÓN: usar días NATURALES por timestamp (igual que Investing.com)
+  // Así los festivos (ej: 4 julio) no desplazan la referencia
+  const weekAgo  = Date.now()/1000 - 7*24*3600;
+  const monthAgo = Date.now()/1000 - 30*24*3600;
+  const nearest  = (target) => en.reduce((b,e)=>
+    Math.abs(e.t-target)<Math.abs(b.t-target)?e:b, en[0]);
+  const w = pct(nearest(weekAgo).p);   // semana: 7 días naturales
+  const m = pct(nearest(monthAgo).p);  // mes:    30 días naturales
+  // YTD: primera sesión del año actual
+  const yrStart=new Date(new Date().getFullYear(),0,1).getTime()/1000;
+  const ytdEntry=en.find(e=>e.t>=yrStart);
+  const ytd=ytdEntry?pct(ytdEntry.p):null;
+  // CORRECCIÓN 1 AÑO: buscar timestamp más cercano a hace exactamente 365 días
+  const oneYearAgo = Date.now()/1000 - 365*24*3600;
+  const yrEntry = en.reduce((best,e)=>
+    Math.abs(e.t-oneYearAgo)<Math.abs(best.t-oneYearAgo)?e:best, en[0]);
+  const yr = pct(yrEntry.p);
+  // ── Análisis de oportunidad ──
+  const series=en.map(e=>e.p);
+  if(price!==series[series.length-1]) series.push(price);
+  let redDays=0;
+  for(let i=series.length-1;i>0;i--){ if(series[i]<series[i-1]) redDays++; else break; }
+  let rsi=null;
+  if(series.length>15){
+    let g=0,l=0;
+    for(let i=series.length-14;i<series.length;i++){const chg=series[i]-series[i-1];if(chg>0)g+=chg;else l-=chg;}
+    rsi=l===0?100:Math.round(100-100/(1+g/l));
+  }
+  const cut30=Date.now()/1000-30*24*3600;
+  const hi30=Math.max(...en.filter(e=>e.t>=cut30).map(e=>e.p),price);
+  const dd=hi30?(price-hi30)/hi30*100:null;
+
+  const hData={w,m,ytd,yr,redDays,rsi,dd};
+  cS(hk, hData, TTL_H);
+
+  return {...qData,...hData};
+}
+
+// ── Score (0-100) ─────────────────────────────────────────
+function score(st){
+  const n=(v,lo,hi)=>v==null?0:Math.max(0,Math.min(100,(v-lo)/(hi-lo)*100));
+  return Math.round(
+    n(st.d,  -5, 12)*0.20+n(st.w,-10,25)*0.20+n(st.m,-20,60)*0.20+
+    n(st.ytd,-30,200)*0.20+n(st.yr,-30,300)*0.15+
+    n(st.vol&&st.avgVol?st.vol/st.avgVol:1,0.5,3)*0.05);
+}
+const emj=sc=>sc>=85?'🔥':sc>=70?'🚀':sc>=55?'📈':sc>=40?'➡️':'❄️';
+const scl=sc=>sc>=85?'#f0c040':sc>=70?'#22c55e':sc>=55?'#38bdf8':sc>=40?'#94a3b8':'#475569';
+
+// ── 💎 Oportunidad: pullback en valor con tendencia fuerte ──
+// Criterios: tendencia (YTD>+15% o 1año>+30%) + 3 días rojos + retroceso -5%/-20% desde máx 30d + RSI<45
+function oppScore(r){
+  if(!(((r.ytd??-999)>15)||((r.yr??-999)>30))) return 0;
+  if((r.redDays??0)<3) return 0;
+  if(r.dd==null||r.dd>-5||r.dd<-20) return 0;
+  if((r.rsi??100)>=45) return 0;
+  const n=(v,lo,hi)=>Math.max(0,Math.min(100,(v-lo)/(hi-lo)*100));
+  return Math.max(1,Math.round(n(r.redDays,3,7)*0.25+(100-n(r.rsi,20,45))*0.35+n(-r.dd,5,20)*0.25+n(Math.max(r.ytd??0,r.yr??0),15,200)*0.15));
+}
+function oppWhy(r){
+  const p=[];
+  p.push((((r.ytd??-999)>15)||((r.yr??-999)>30))?'✅ Tendencia de fondo fuerte':'❌ Sin tendencia fuerte (se exige YTD>+15% o 1 año>+30%)');
+  p.push(((r.redDays??0)>=3)?`✅ ${r.redDays} días rojos seguidos`:`❌ Solo ${r.redDays??0} días rojos consecutivos (mínimo 3)`);
+  p.push((r.dd!=null&&r.dd<=-5&&r.dd>=-20)?`✅ Retroceso ${r.dd.toFixed(1)}% desde máximo de 30 días`:(r.dd!=null?`❌ Retroceso ${r.dd.toFixed(1)}% (debe estar entre -5% y -20%)`:'❌ Sin dato de retroceso'));
+  p.push(((r.rsi??100)<45)?`✅ RSI ${r.rsi} — zona de sobreventa`:`❌ RSI ${r.rsi??'—'} (debe ser menor de 45)`);
+  return p;
+}
+
+// ── Formato ───────────────────────────────────────────────
+const f2=v=>v!=null?v.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
+const fp=v=>v!=null?(v>=0?'+':'')+f2(v)+'%':'—';
+const fx=v=>v!=null?'$'+v.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
+const cc=v=>v==null?'neu':v>0?'pos':'neg';
+const sk=w=>`<span class="sk" style="width:${w}px">&nbsp;</span>`;
+
+// ── Estado ────────────────────────────────────────────────
+let data={},col='sc',dir=-1,filt='T';
+
+// ── Render ────────────────────────────────────────────────
+function render(){
+  let rows;
+  if(filt==='OPP'){
+    rows=OPP_ALL().map(x=>{const d=data[x.t]||{};const r={...x,...d,sc:score(d)};r.oppSc=oppScore(r);return r;})
+      .filter(r=>r.oppSc>0)
+      .sort((a,b)=>b.oppSc-a.oppSc);
+  } else {
+    rows=STOCKS.map(x=>{const d=data[x.t]||{};const r={...x,...d,sc:score(d)};r.oppSc=oppScore(r);return r;});
+    if(filt!=='T') rows=rows.filter(r=>r.s===filt);
+  }
+  if(filt!=='OPP') rows.sort((a,b)=>col==='t'?a.t<b.t?-dir:dir:((a[col]??-9999)-(b[col]??-9999))*dir);
+  if(rows.length===0){
+    document.getElementById('tb').innerHTML = filt==='OPP'
+      ? '<tr><td colspan="11" style="text-align:center;padding:36px 16px;color:#f0c040;line-height:1.8;">💎 <b>Ningún valor cumple ahora los 4 criterios de oportunidad.</b><br><span style="color:#64748b;font-size:12px;">Se escanean tus 40 acciones + ~100 grandes del S&P 500 + 20 ETFs USA (la primera vez tarda 1-2 min, mira la barra de progreso).<br>Es normal ver esto vacío en días de subidas — el radar salta tras 3+ días rojos con RSI en sobreventa.</span></td></tr>'
+      : '<tr><td colspan="11" style="text-align:center;padding:30px;color:#64748b;">Sin valores en este filtro.</td></tr>';
+  } else
+  document.getElementById('tb').innerHTML=rows.map((r,i)=>{
+    const cl=scl(r.sc);
+    return`<tr class="${r.sc>=70?'ex':''}">
+      <td class="rk">${i+1}</td>
+      <td style="cursor:pointer" onclick="tkSearch('${r.t}')" title="Ver ${r.t} en Investing"><div class="tk ${r.sc>=85?'gl':''}">${r.t}${r.oppSc>0?' 💎':''}</div></td>
+      <td><div class="cn">${r.n}</div></td>
+      <td class="hm"><span class="bg s${r.s}">${SN[r.s]}</span></td>
+      <td class="pr">${r.price!=null?fx(r.price):sk(58)}</td>
+      <td class="ch ${cc(r.d)}">${r.d!=null?fp(r.d):sk(46)}</td>
+      <td class="ch ${cc(r.w)} hm">${r.w!=null?fp(r.w):sk(46)}</td>
+      <td class="ch ${cc(r.m)} hm">${r.m!=null?fp(r.m):sk(46)}</td>
+      <td class="ch ${cc(r.ytd)}">${r.ytd!=null?fp(r.ytd):sk(46)}</td>
+      <td class="ch ${cc(r.yr)} hm">${r.yr!=null?fp(r.yr):sk(46)}</td>
+      <td><div class="scw">
+        <span style="font-size:13px">${emj(r.sc)}</span>
+        <div class="scb"><div class="scf" style="width:${r.sc}%;background:${cl}"></div></div>
+        <span class="scn" style="color:${cl}">${r.sc}</span>
+      </div></td>
+    </tr>`;
+  }).join('');
+  const hp=rows.filter(r=>r.price!=null);
+  const top=[...rows].sort((a,b)=>(b.ytd??-999)-(a.ytd??-999))[0];
+  document.getElementById('stats').innerHTML=`
+    <div class="stat"><span class="slb">Hoy:</span><span class="svl cg">▲${hp.filter(r=>(r.d??0)>0).length} subiendo</span></div>
+    <div class="stat"><span class="svl cr">▼${hp.filter(r=>(r.d??0)<0).length} bajando</span></div>
+    <div class="stat"><span class="slb">💥:</span><span class="svl cy">${rows.filter(r=>r.sc>=70).length} explosivas</span></div>
+    ${top?.ytd!=null?`<div class="stat hm"><span class="slb">👑 Mejor YTD:</span><span class="svl cg">${top.t} ${fp(top.ytd)}</span></div>`:''}`;
+}
+
+function srt(c){dir=col===c?dir*-1:-1;col=c;document.querySelectorAll('thead th').forEach(t=>t.classList.remove('on'));event?.target?.classList?.add('on');render();}
+function setF(f){filt=f;document.querySelectorAll('.fb').forEach(b=>b.classList.remove('on'));event?.target?.classList?.add('on');render();if(f==='OPP')scanOpp();}
+
+// ── 💎 Escáner amplio: S&P 500 + ETFs USA + tus 40 ──
+let oppScanning=false;
+async function scanOpp(){
+  if(oppScanning) return;
+  oppScanning=true;
+  const pend=OPP_ALL().filter(x=>!(data[x.t]&&data[x.t].rsi!==undefined&&data[x.t].rsi!==null||data[x.t]&&data[x.t].redDays!==undefined));
+  if(pend.length===0){oppScanning=false;render();return;}
+  let done=0;
+  const B=6;
+  for(let i=0;i<pend.length;i+=B){
+    const b=pend.slice(i,i+B);
+    await Promise.all(b.map(async x=>{
+      const d=await fetchStock(x.t);
+      if(Object.keys(d).length>0) data[x.t]={...(data[x.t]||{}),...d};
+      done++;
+      setL(Math.round(done/pend.length*100),`💎 Escaneando S&P 500 + ETFs: ${done}/${pend.length}...`);
+    }));
+    if(filt==='OPP') render();
+    if(i+B<pend.length) await sl(250);
+  }
+  setL(100,'');await sl(300);setL(-1,'');
+  oppScanning=false;
+  if(filt==='OPP') render();
+}
+
+// ── Carga ─────────────────────────────────────────────────
+const sl=ms=>new Promise(r=>setTimeout(r,ms));
+function setL(p,t){document.getElementById('lb').style.width=Math.max(0,p)+'%';document.getElementById('lt').textContent=p<0?'':t;}
+function showW(m){const e=document.getElementById('bw');e.style.display='block';e.textContent=m;}
+function showE(m){const e=document.getElementById('be');e.style.display='block';e.textContent=m;}
+
+async function loadData(){
+  document.getElementById('bw').style.display='none';
+  document.getElementById('be').style.display='none';
+  setL(3,'Conectando con Yahoo Finance...');
+
+  let done=0,errors=0;
+  const BATCH=5; // 5 en paralelo
+
+  for(let i=0;i<STOCKS.length;i+=BATCH){
+    const batch=STOCKS.slice(i,i+BATCH);
+    await Promise.all(batch.map(async x=>{
+      const d=await fetchStock(x.t);
+      if(Object.keys(d).length>0){
+        data[x.t]={...(data[x.t]||{}),...d};
+      } else {errors++;}
+      done++;
+      setL(Math.round(done/STOCKS.length*100),`Cargando ${done}/${STOCKS.length}...`);
+    }));
+    render();
+    if(i+BATCH<STOCKS.length) await sl(300);
+  }
+
+  if(errors===STOCKS.length){
+    showE('❌ No se pudo conectar con Yahoo Finance. Comprueba tu conexión y pulsa ↻ Actualizar.');
+  } else if(errors>5){
+    showW(`⚠️ ${errors} acciones no cargaron. Pulsa ↻ Actualizar para reintentar.`);
+  }
+
+  setL(100,''); await sl(400); setL(-1,'');
+  document.getElementById('upd').textContent=
+    `Actualizado: ${new Date().toLocaleTimeString('es-ES')} · Caché: precios 20min · histórico 6h`;
+}
+
+async function refreshData(){cAll();data={};render();await loadData();}
+
+// ── Excel ─────────────────────────────────────────────────
+function exportExcel(){
+  const rows=[['#','Ticker','Empresa','Sector','Precio $','Día %','Semana %','Mes %','YTD %','1 Año %','Score','Estado']];
+  [...STOCKS].map(x=>{const d=data[x.t]||{};return{...x,...d,sc:score(d)};})
+    .sort((a,b)=>b.sc-a.sc)
+    .forEach((r,i)=>rows.push([i+1,r.t,r.n,SN[r.s],
+      r.price!=null?+r.price.toFixed(2):'',r.d!=null?+r.d.toFixed(2):'',
+      r.w!=null?+r.w.toFixed(2):'',r.m!=null?+r.m.toFixed(2):'',
+      r.ytd!=null?+r.ytd.toFixed(2):'',r.yr!=null?+r.yr.toFixed(2):'',
+      r.sc,emj(r.sc)]));
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:4},{wch:7},{wch:22},{wch:8},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:8},{wch:5}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Los 40 Principales');
+  XLSX.writeFile(wb,`Los40_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── ✏️ Edición de lista ─────────────────────────────────────
+let editTmp=[];
+function openEdit(){editTmp=[...STOCKS];renderEditList();document.getElementById('modal-bg').classList.add('open');}
+function closeEdit(){document.getElementById('modal-bg').classList.remove('open');}
+function renderEditList(){
+  document.getElementById('edit-list').innerHTML=editTmp.map((x,i)=>`
+    <div class="edit-row">
+      <span class="edit-tk">${x.t}</span>
+      <span class="edit-nm">${x.n} · ${SN[x.s]||x.s}</span>
+      <button class="edit-del" onclick="delStock(${i})">🗑️ Borrar</button>
+    </div>`).join('');
+}
+function delStock(i){
+  if(!confirm(`¿Borrar "${editTmp[i].t} — ${editTmp[i].n}" de la lista?`)) return;
+  editTmp.splice(i,1);renderEditList();
+}
+function addStock(){
+  const t=(document.getElementById('add-t').value||'').trim().toUpperCase();
+  const n=(document.getElementById('add-n').value||'').trim();
+  const s=document.getElementById('add-s').value;
+  if(!t||!n){alert('Rellena el Ticker y el Nombre.');return;}
+  if(editTmp.find(x=>x.t===t)){alert(`El ticker ${t} ya está en la lista.`);return;}
+  editTmp.push({t,n,s});
+  document.getElementById('add-t').value='';document.getElementById('add-n').value='';
+  renderEditList();
+}
+function saveEdit(){
+  if(editTmp.length===0){alert('La lista no puede estar vacía.');return;}
+  STOCKS=[...editTmp];
+  localStorage.setItem(LS_LIST,JSON.stringify(STOCKS));
+  closeEdit();data={};render();loadData();
+}
+function resetList(){
+  if(!confirm('¿Restaurar la lista original? Se perderán tus cambios.')) return;
+  STOCKS=[...DEFAULT_STOCKS];localStorage.removeItem(LS_LIST);
+  editTmp=[...STOCKS];renderEditList();
+}
+
+// ── 🔗 Clic en ticker → buscar "ticker investing" en pestaña nueva ──
+function tkSearch(t){
+  window.open('https://www.google.com/search?q='+encodeURIComponent(t.split('.')[0]+' investing'),'_blank');
+}
+
+// ── 🔎 Analizador de ticker individual ─────────────────────
+async function lookup(){
+  const t=(document.getElementById('lkInp').value||'').trim().toUpperCase();
+  if(!t) return;
+  const card=document.getElementById('lkCard');
+  card.style.display='block';
+  card.innerHTML='🔎 Analizando <b>'+t+'</b>...';
+  const d=await fetchStock(t);
+  if(!d||d.price==null){
+    card.innerHTML='❌ No hay datos para "<b>'+t+'</b>". Comprueba el ticker (para Europa añade .DE o .L al final).';
+    return;
+  }
+  const osc=oppScore(d);
+  const why=oppWhy(d).map(x=>'<div>'+x+'</div>').join('');
+  card.innerHTML=`
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+      <strong style="font-family:'JetBrains Mono',monospace;font-size:16px;">${t} — ${fx(d.price)}</strong>
+      <span style="font-weight:700;color:${osc>0?'#f0c040':'#64748b'}">${osc>0?('💎 OPORTUNIDAD — score '+osc+'/100'):'Sin señal de oportunidad ahora mismo'}</span>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;color:#94a3b8;">
+      <span>Día: <b class="${cc(d.d)}">${fp(d.d)}</b></span>
+      <span>Semana: <b class="${cc(d.w)}">${fp(d.w)}</b></span>
+      <span>Mes: <b class="${cc(d.m)}">${fp(d.m)}</b></span>
+      <span>YTD: <b class="${cc(d.ytd)}">${fp(d.ytd)}</b></span>
+      <span>1 Año: <b class="${cc(d.yr)}">${fp(d.yr)}</b></span>
+      <span>RSI: <b>${d.rsi??'—'}</b></span>
+    </div>
+    ${why}
+    <div style="margin-top:8px;color:#64748b;font-size:11px;">⚠️ Herramienta orientativa basada en momentum y sobreventa — no es una recomendación de compra.</div>`;
+}
+
+// ── INICIO ────────────────────────────────────────────────
+render();
+loadData();
+</script>
+</body>
+</html>
