@@ -116,7 +116,7 @@
 <div class="hdr">
   <div>
     <div class="hdr-t">🔥 <span>Los 40 Principales</span> — Acciones USA</div>
-    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v7 — 29/08/2026</div>
+    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v8 — 29/08/2026</div>
     <div class="hdr-m" id="upd">Conectando...</div>
   </div>
   <div class="hdr-b">
@@ -208,12 +208,14 @@
 
 <script>
 // ════════════════════════════════════════════════════════════
-// LOS 40 PRINCIPALES — v7 (29/08/2026) — Yahoo Finance (sin API key)
-// CAMBIOS v7:
-//  1. Ya NO miente: si no consigue datos nuevos lo dice y marca las filas
-//  2. Lista de intermediarios (proxies) corregida y ampliada
-//  3. Peticiones mas ligeras: 5 dias en vez de 1 año cuando solo hace falta el precio
-//  4. Segunda pasada automatica para las que fallen
+// LOS 40 PRINCIPALES — v8 (29/08/2026) — Yahoo Finance (sin API key)
+// CAMBIOS v8 (lo importante):
+//  1. PETICIONES EN BLOQUE: 12 tickers por peticion en vez de 1.
+//     40 acciones pasan de 40 peticiones a 4. Es lo que evita que corten.
+//  2. El intermediario que falla 3 veces SEGUIDAS se descarta y no se
+//     vuelve a probar (antes se insistia y salian cientos de fallos)
+//  3. Ya NO miente: si no consigue datos nuevos lo dice y marca las filas
+//  4. 5 dias en vez de 1 año cuando solo hace falta refrescar el precio
 //  (NO hay refresco automatico: solo se actualiza al pulsar el boton)
 // ════════════════════════════════════════════════════════════
 const DEFAULT_STOCKS = [
@@ -314,136 +316,102 @@ function edad(ts){
 }
 
 // ── Proxies CORS ───────────────────────────────────────────
-// El navegador no deja pedir datos a Yahoo directamente, hay que pasar
-// por un intermediario. Se prueban en orden y se recuerda el que funcionó.
-// OJO: estos servicios son gratuitos y se caen o cambian de formato a menudo.
-// Si un día deja de funcionar todo, lo primero que hay que revisar es esta lista.
+// El navegador no deja pedir datos a Yahoo directamente, hay que pasar por un
+// intermediario. Son servicios gratuitos que se caen y cambian a menudo.
+// NOVEDAD v8: el que falla 3 veces seguidas se DESCARTA para el resto de la
+// sesion. Antes se seguia probando una y otra vez y por eso salian cientos
+// de fallos y la carga no terminaba nunca.
 const PROXIES=[
-  {n:'corsproxy.io',    f:u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`},
-  {n:'allorigins raw',  f:u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`},
-  {n:'codetabs',        f:u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`},
-  {n:'allorigins get',  f:u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`},
-  {n:'cors.workers',    f:u=>`https://test.cors.workers.dev/?${u}`},
+  {n:'allorigins raw',  caido:false, seg:0, f:u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`},
+  {n:'corsproxy.io',    caido:false, seg:0, f:u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`},
+  {n:'codetabs',        caido:false, seg:0, f:u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`},
+  {n:'allorigins get',  caido:false, seg:0, f:u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`},
+  {n:'cors.workers',    caido:false, seg:0, f:u=>`https://test.cors.workers.dev/?${u}`},
 ];
+const MAX_SEG = 3;          // fallos seguidos antes de descartar un intermediario
 let proxyIdx=0;
 let proxyFallos=0, proxyExitos=0;
+
+function proxiesVivos(){ return PROXIES.filter(p=>!p.caido).length; }
+function reactivarProxies(){ PROXIES.forEach(p=>{p.caido=false;p.seg=0;}); proxyIdx=0; }
 
 function pintaProxy(){
   const e=document.getElementById('proxy-st');
   if(!e) return;
+  const vivos=proxiesVivos();
   if(proxyExitos===0 && proxyFallos===0){e.textContent='';return;}
-  if(proxyExitos===0){
+  if(vivos===0){
     e.className='src-er';
-    e.textContent=`· ⛔ Ningún intermediario responde (${proxyFallos} intentos fallidos)`;
+    e.textContent='· ⛔ Ningun intermediario responde — vuelve a intentarlo en unos minutos';
+  } else if(proxyExitos===0){
+    e.className='src-er';
+    e.textContent=`· ⛔ Sin conexion todavia (${proxyFallos} fallos, ${vivos} intermediarios por probar)`;
   } else {
     e.className='src-ok';
-    e.textContent=`· ✅ Intermediario: ${PROXIES[proxyIdx].n}` + (proxyFallos?`  ·  ${proxyFallos} fallos`:'');
+    e.textContent=`· ✅ ${PROXIES[proxyIdx].n} · ${proxyExitos} peticiones OK`
+      + (proxyFallos?` · ${proxyFallos} fallos`:'')
+      + (vivos<PROXIES.length?` · ${PROXIES.length-vivos} descartados`:'');
   }
 }
 
 const sl=ms=>new Promise(r=>setTimeout(r,ms));
 
-// Pide una URL a Yahoo pasando por los intermediarios.
-// Da 2 vueltas completas a la lista con una pausa entre medias.
-async function yFetch(url){
-  for(let vuelta=0; vuelta<2; vuelta++){
-    for(let i=0;i<PROXIES.length;i++){
-      const pi=(proxyIdx+i)%PROXIES.length;
-      try{
-        const r=await fetch(PROXIES[pi].f(url),{signal:AbortSignal.timeout(9000)});
-        if(!r.ok){proxyFallos++;continue;}
-        let j=await r.json();
-        if(j&&j.contents){ try{j=JSON.parse(j.contents);}catch{proxyFallos++;continue;} }
-        if(j?.chart?.result){
-          proxyIdx=pi; proxyExitos++;
-          pintaProxy();
-          return j;
-        }
-        proxyFallos++;
-      }catch{proxyFallos++;continue;}
+// Pide una URL a Yahoo pasando por un intermediario.
+// UNA sola vuelta: los reintentos se hacen mas arriba, con calma.
+// "valida" comprueba que lo devuelto es de verdad lo que esperabamos.
+async function yFetch(url, valida){
+  if(proxiesVivos()===0) return null;
+  for(let i=0;i<PROXIES.length;i++){
+    const pi=(proxyIdx+i)%PROXIES.length;
+    const P=PROXIES[pi];
+    if(P.caido) continue;
+    try{
+      const r=await fetch(P.f(url),{signal:AbortSignal.timeout(6000)});
+      if(!r.ok) throw new Error('http '+r.status);
+      let j=await r.json();
+      if(j&&j.contents){ j=JSON.parse(j.contents); }
+      if(!valida(j)) throw new Error('respuesta no valida');
+      P.seg=0; proxyIdx=pi; proxyExitos++;
+      pintaProxy();
+      return j;
+    }catch{
+      proxyFallos++; P.seg++;
+      if(P.seg>=MAX_SEG) P.caido=true;   // descartado: no se vuelve a probar
     }
-    if(vuelta===0) await sl(900);   // respiro antes de reintentar
   }
   pintaProxy();
   return null;
 }
 
-// ── Fetch datos de una acción ─────────────────────────────
-// Devuelve siempre un objeto con dos marcas de control:
-//   _viejo : true  → NO se pudo actualizar, son datos guardados de antes
-//   _ts    : cuándo se consiguieron esos datos de verdad
-// Si el histórico sigue vigente (6h) solo pide 5 días en vez de 1 año.
-// Eso es unas 10 veces menos datos y hace que los intermediarios no corten.
-async function fetchStock(ticker){
+// ── Calculo comun ─────────────────────────────────────────
+// "en" = lista de {t:fecha, p:precio} ordenada de antigua a reciente.
+// Calcula todo y lo guarda en cache. Lo usan tanto la peticion en bloque
+// como la peticion individual, para que den exactamente el mismo resultado.
+function calcSerie(ticker, en, price, prevClose, vol, avgVol, conHist){
   const qk='yq_'+ticker, hk='yh_'+ticker;
-  const qOk=cOk(qk,TTL_Q), hOk=cOk(hk,TTL_H);
+  if(!price || price<0.5) return null;
 
-  // Todo vigente: no se pide nada
-  if(qOk&&hOk) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:false, _ts:cTs(qk)};
-
-  const necesitaHist = !hOk;
-  const rango = necesitaHist ? '1y' : '5d';
-  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=${rango}`;
-  const j=await yFetch(url);
-
-  // Sin respuesta: se devuelve lo guardado, PERO marcado como viejo
-  if(!j){
-    const q=cG(qk), h=cG(hk);
-    if(!q&&!h) return {_viejo:true,_ts:null,_fallo:true};
-    return {...(q||{}), ...(h||{}), _viejo:true, _ts:cTs(qk)};
-  }
-
-  const chart=j?.chart?.result?.[0];
-  if(!chart) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:true, _ts:cTs(qk), _fallo:!cG(qk)};
-  const meta=chart.meta||{};
-  const ts=chart.timestamp||[];
-  const px=chart.indicators?.quote?.[0]?.close||[];
-
-  const en=ts.map((t,i)=>({t,p:px[i]})).filter(e=>e.p!=null&&e.p>0);
-  const minimo = necesitaHist ? 5 : 2;
-  if(en.length<minimo) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:true, _ts:cTs(qk), _fallo:!cG(qk)};
-
-  const last=en.length-1;
-  const price=meta.regularMarketPrice||en[last].p;
   const pct=(old)=>old?((price-old)/old*100):null;
+  const dailyChg = (prevClose && prevClose>0 && price!==prevClose)
+    ? (price-prevClose)/prevClose*100 : null;
 
-  // ── Cotización (caché corta) ──
-  // meta.previousClose = cierre real de ayer
-  // meta.chartPreviousClose = hace 1 año (NO usar para el dato del día)
-  const prevClose = meta.previousClose || en[Math.max(0,last-1)].p;
-  const dailyChg = (prevClose && prevClose > 0 && price !== prevClose)
-    ? (price - prevClose) / prevClose * 100
-    : null;
-
-  const vol=meta.regularMarketVolume||null;
-  const avgVol=meta.fiftyDayAverageVolume||null;
-
-  // Precio absurdo → dato erróneo de Yahoo, nos quedamos con lo anterior
-  if(!price || price < 0.5) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:true, _ts:cTs(qk), _fallo:!cG(qk)};
-
-  const qData={price, d:dailyChg, vol, avgVol};
+  const qData={price, d:dailyChg, vol:vol||null, avgVol:avgVol||null};
   cS(qk, qData, TTL_Q);
 
-  // ── Histórico (caché larga) ──
   let hData;
-  if(necesitaHist){
-    // Días NATURALES por fecha (igual que Investing.com): así los festivos
+  if(conHist && en.length>=5){
+    // Dias NATURALES por fecha (igual que Investing.com): asi los festivos
     // no desplazan la referencia
-    const weekAgo  = Date.now()/1000 - 7*24*3600;
-    const monthAgo = Date.now()/1000 - 30*24*3600;
-    const nearest  = (target) => en.reduce((b,e)=>
-      Math.abs(e.t-target)<Math.abs(b.t-target)?e:b, en[0]);
-    const w = pct(nearest(weekAgo).p);
-    const m = pct(nearest(monthAgo).p);
+    const ahora=Date.now()/1000;
+    const nearest=(target)=>en.reduce((b,e)=>Math.abs(e.t-target)<Math.abs(b.t-target)?e:b, en[0]);
+    const w  = pct(nearest(ahora-7*24*3600).p);
+    const m  = pct(nearest(ahora-30*24*3600).p);
     const yrStart=new Date(new Date().getFullYear(),0,1).getTime()/1000;
     const ytdEntry=en.find(e=>e.t>=yrStart);
     const ytd=ytdEntry?pct(ytdEntry.p):null;
-    const oneYearAgo = Date.now()/1000 - 365*24*3600;
-    const yrEntry = en.reduce((best,e)=>
-      Math.abs(e.t-oneYearAgo)<Math.abs(best.t-oneYearAgo)?e:best, en[0]);
-    const yr = pct(yrEntry.p);
+    const yr = pct(nearest(ahora-365*24*3600).p);
 
-    // ── Análisis de oportunidad ──
+    // ── Analisis de oportunidad ──
     const series=en.map(e=>e.p);
     if(price!==series[series.length-1]) series.push(price);
     let redDays=0;
@@ -454,8 +422,9 @@ async function fetchStock(ticker){
       for(let i=series.length-14;i<series.length;i++){const chg=series[i]-series[i-1];if(chg>0)g+=chg;else l-=chg;}
       rsi=l===0?100:Math.round(100-100/(1+g/l));
     }
-    const cut30=Date.now()/1000-30*24*3600;
-    const hi30=Math.max(...en.filter(e=>e.t>=cut30).map(e=>e.p),price);
+    const cut30=ahora-30*24*3600;
+    const dias30=en.filter(e=>e.t>=cut30).map(e=>e.p);
+    const hi30=Math.max(...(dias30.length?dias30:[price]),price);
     const dd=hi30?(price-hi30)/hi30*100:null;
 
     hData={w,m,ytd,yr,redDays,rsi,dd};
@@ -463,8 +432,109 @@ async function fetchStock(ticker){
   } else {
     hData=cG(hk)||{};
   }
+  return {...qData, ...hData, _viejo:false, _ts:Date.now()};
+}
 
-  return {...qData,...hData, _viejo:false, _ts:Date.now()};
+// ── PETICION EN BLOQUE (lo importante de la v8) ───────────
+// El endpoint "spark" de Yahoo admite VARIOS tickers en una sola peticion.
+// 40 acciones pasan de 40 peticiones a 3 o 4. Es lo que evita que el
+// intermediario nos corte.
+// Si este endpoint no funcionase, se cae solo al metodo antiguo de uno en uno.
+const LOTE = 12;   // tickers por peticion
+let sparkOK = null;  // null = sin probar, true = funciona, false = no funciona
+
+function sparkParse(j){
+  // Yahoo ha devuelto este endpoint con dos formas distintas segun la epoca.
+  // Se aceptan las dos.
+  if(!j) return null;
+  if(j.spark&&Array.isArray(j.spark.result)){
+    const out={};
+    j.spark.result.forEach(r=>{
+      const resp=r.response&&r.response[0];
+      if(!resp) return;
+      out[r.symbol]={
+        timestamp: resp.timestamp||[],
+        close: resp.indicators?.quote?.[0]?.close||[],
+        previousClose: resp.meta?.previousClose,
+        price: resp.meta?.regularMarketPrice,
+        vol: resp.meta?.regularMarketVolume,
+        avgVol: resp.meta?.fiftyDayAverageVolume
+      };
+    });
+    return Object.keys(out).length?out:null;
+  }
+  // Forma plana: { AAPL:{timestamp:[],close:[],previousClose:..} , ... }
+  const claves=Object.keys(j).filter(k=>j[k]&&Array.isArray(j[k].close));
+  if(!claves.length) return null;
+  const out={};
+  claves.forEach(k=>{
+    out[k]={
+      timestamp: j[k].timestamp||[],
+      close: j[k].close||[],
+      previousClose: j[k].previousClose,
+      price: j[k].regularMarketPrice,
+      vol: null, avgVol: null
+    };
+  });
+  return out;
+}
+
+// Pide un grupo de tickers de golpe. Devuelve {ticker: datos} solo de los
+// que hayan venido bien; los que falten se piden luego de uno en uno.
+async function fetchLote(tickers, conHist){
+  if(sparkOK===false) return {};
+  const rango = conHist ? '1y' : '5d';
+  const url=`https://query1.finance.yahoo.com/v8/finance/spark?symbols=${tickers.join(',')}&range=${rango}&interval=1d`;
+  const j=await yFetch(url, x=>sparkParse(x)!==null);
+  const parsed = sparkParse(j);
+  if(!parsed){ if(sparkOK===null) sparkOK=false; return {}; }
+  sparkOK=true;
+
+  const out={};
+  tickers.forEach(t=>{
+    const s=parsed[t];
+    if(!s) return;
+    const en=(s.timestamp||[]).map((tt,i)=>({t:tt,p:s.close[i]})).filter(e=>e.p!=null&&e.p>0);
+    if(en.length<2) return;
+    const price = s.price || en[en.length-1].p;
+    const prev  = s.previousClose || en[Math.max(0,en.length-2)].p;
+    const d = calcSerie(t, en, price, prev, s.vol, s.avgVol, conHist && en.length>=5);
+    if(d) out[t]=d;
+  });
+  return out;
+}
+
+// ── Fetch de UNA accion (respaldo y buscador individual) ──
+// Devuelve siempre dos marcas de control:
+//   _viejo : true  → NO se pudo actualizar, son datos guardados de antes
+//   _ts    : cuando se consiguieron esos datos de verdad
+async function fetchStock(ticker){
+  const qk='yq_'+ticker, hk='yh_'+ticker;
+  const qOk=cOk(qk,TTL_Q), hOk=cOk(hk,TTL_H);
+  if(qOk&&hOk) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:false, _ts:cTs(qk)};
+
+  const conHist = !hOk;
+  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=${conHist?'1y':'5d'}`;
+  const j=await yFetch(url, x=>!!x?.chart?.result);
+
+  const guardado=()=>{
+    const q=cG(qk), h=cG(hk);
+    if(!q&&!h) return {_viejo:true,_ts:null,_fallo:true};
+    return {...(q||{}), ...(h||{}), _viejo:true, _ts:cTs(qk)};
+  };
+  if(!j) return guardado();
+
+  const chart=j.chart.result[0];
+  if(!chart) return guardado();
+  const meta=chart.meta||{};
+  const en=(chart.timestamp||[]).map((t,i)=>({t,p:chart.indicators?.quote?.[0]?.close?.[i]}))
+                                .filter(e=>e.p!=null&&e.p>0);
+  if(en.length<(conHist?5:2)) return guardado();
+
+  const price=meta.regularMarketPrice||en[en.length-1].p;
+  const prev=meta.previousClose||en[Math.max(0,en.length-2)].p;
+  const d=calcSerie(ticker, en, price, prev, meta.regularMarketVolume, meta.fiftyDayAverageVolume, conHist);
+  return d || guardado();
 }
 
 // ── Score (0-100) ─────────────────────────────────────────
@@ -566,20 +636,27 @@ let oppScanning=false;
 async function scanOpp(){
   if(oppScanning) return;
   oppScanning=true;
-  const pend=OPP_ALL().filter(x=>!(data[x.t]&&data[x.t].rsi!==undefined&&data[x.t].rsi!==null||data[x.t]&&data[x.t].redDays!==undefined));
+  const pend=OPP_ALL().filter(x=>!(data[x.t]&&data[x.t].rsi!=null));
   if(pend.length===0){oppScanning=false;render();return;}
-  let done=0;
-  const B=4;   // menos en paralelo: los intermediarios cortan si se les aprieta
-  for(let i=0;i<pend.length;i+=B){
-    const b=pend.slice(i,i+B);
-    await Promise.all(b.map(async x=>{
-      const d=await fetchStock(x.t);
-      if(!d._fallo) data[x.t]={...(data[x.t]||{}),...d};
-      done++;
-      setL(Math.round(done/pend.length*100),`💎 Escaneando S&P 500 + ETFs: ${done}/${pend.length}...`);
-    }));
+  let done=0, sueltas=[];
+  for(let i=0;i<pend.length;i+=LOTE){
+    if(proxiesVivos()===0) break;
+    const g=pend.slice(i,i+LOTE);
+    const res=await fetchLote(g.map(x=>x.t), true);
+    g.forEach(x=>{ if(res[x.t]) data[x.t]={...(data[x.t]||{}),...res[x.t]}; else sueltas.push(x); done++; });
+    setL(Math.round(done/pend.length*85),`💎 Escaneando S&P 500 + ETFs: ${done}/${pend.length}...`);
     if(filt==='OPP') render();
-    if(i+B<pend.length) await sl(500);
+    if(i+LOTE<pend.length) await sl(600);
+  }
+  // Las que no vinieron en bloque, de una en una (maximo 30, para no eternizarse)
+  const resto=sueltas.slice(0,30);
+  for(let i=0;i<resto.length;i+=3){
+    if(proxiesVivos()===0) break;
+    const g=resto.slice(i,i+3);
+    await Promise.all(g.map(async x=>{ const d=await fetchStock(x.t); if(!d._fallo) data[x.t]={...(data[x.t]||{}),...d}; }));
+    setL(85+Math.round((i+3)/Math.max(1,resto.length)*13),`💎 Rezagadas ${Math.min(i+3,resto.length)}/${resto.length}...`);
+    if(filt==='OPP') render();
+    if(i+3<resto.length) await sl(700);
   }
   setL(100,'');await sl(300);setL(-1,'');
   oppScanning=false;
@@ -594,69 +671,92 @@ function showE(m){const e=document.getElementById('be');e.style.display='block';
 async function loadData(){
   document.getElementById('bw').style.display='none';
   document.getElementById('be').style.display='none';
-  proxyFallos=0; proxyExitos=0; pintaProxy();
+  reactivarProxies();
+  proxyFallos=0; proxyExitos=0; sparkOK=null; pintaProxy();
   setL(3,'Conectando con Yahoo Finance...');
 
-  let done=0;
-  let nuevos=0;    // datos frescos conseguidos ahora
-  let viejos=0;    // no se pudo actualizar, se muestran datos guardados
-  let sinNada=0;   // ni datos nuevos ni guardados
+  // 1) Separar las que ya estan vigentes en cache (no se piden)
+  const vigentes=[], pedirHist=[], pedirSoloPrecio=[];
+  STOCKS.forEach(x=>{
+    const qOk=cOk('yq_'+x.t,TTL_Q), hOk=cOk('yh_'+x.t,TTL_H);
+    if(qOk&&hOk){ vigentes.push(x); data[x.t]={...(data[x.t]||{}),...(cG('yq_'+x.t)||{}),...(cG('yh_'+x.t)||{}),_viejo:false,_ts:cTs('yq_'+x.t)}; }
+    else if(!hOk) pedirHist.push(x);
+    else pedirSoloPrecio.push(x);
+  });
+  render();
+
+  let nuevos=vigentes.length, viejos=0, sinNada=0;
   const pendientes=[];
-  const BATCH=4;   // 4 en paralelo (antes 5): menos presión sobre el intermediario
+  const totalPedir=pedirHist.length+pedirSoloPrecio.length;
+  let hechos=0;
 
-  for(let i=0;i<STOCKS.length;i+=BATCH){
-    const batch=STOCKS.slice(i,i+BATCH);
-    await Promise.all(batch.map(async x=>{
-      const d=await fetchStock(x.t);
-      if(d._fallo){ sinNada++; pendientes.push(x); }
-      else if(d._viejo){ viejos++; pendientes.push(x); data[x.t]={...(data[x.t]||{}),...d}; }
-      else { nuevos++; data[x.t]={...(data[x.t]||{}),...d}; }
-      done++;
-      setL(Math.round(done/STOCKS.length*90),`Cargando ${done}/${STOCKS.length}...`);
-    }));
-    render();
-    if(i+BATCH<STOCKS.length) await sl(450);
-  }
-
-  // ── SEGUNDA PASADA: reintento solo de las que fallaron ──
-  if(pendientes.length && proxyExitos>0){
-    setL(92,`Reintentando ${pendientes.length} que fallaron...`);
-    await sl(1200);
-    for(let i=0;i<pendientes.length;i+=2){
-      const par=pendientes.slice(i,i+2);
-      await Promise.all(par.map(async x=>{
-        const d=await fetchStock(x.t);
-        if(!d._viejo && !d._fallo){
-          data[x.t]={...(data[x.t]||{}),...d};
-          nuevos++;
-          if(sinNada>0) sinNada--; else viejos--;
-        }
-      }));
-      if(i+2<pendientes.length) await sl(600);
+  // 2) PETICIONES EN BLOQUE — varios tickers por peticion
+  async function porLotes(lista, conHist){
+    for(let i=0;i<lista.length;i+=LOTE){
+      const grupo=lista.slice(i,i+LOTE);
+      const res=await fetchLote(grupo.map(x=>x.t), conHist);
+      grupo.forEach(x=>{
+        if(res[x.t]){ data[x.t]={...(data[x.t]||{}),...res[x.t]}; nuevos++; }
+        else pendientes.push(x);
+        hechos++;
+      });
+      setL(5+Math.round(hechos/Math.max(1,totalPedir)*70),`Cargando en bloque ${hechos}/${totalPedir}...`);
+      render();
+      if(i+LOTE<lista.length) await sl(600);
+      if(proxiesVivos()===0) break;
     }
-    render();
+  }
+  await porLotes(pedirHist, true);
+  if(proxiesVivos()>0) await porLotes(pedirSoloPrecio, false);
+
+  // 3) LAS QUE FALTEN — de una en una, despacio
+  if(pendientes.length && proxiesVivos()>0){
+    setL(78,`Reintentando ${pendientes.length} sueltas...`);
+    for(let i=0;i<pendientes.length;i+=3){
+      if(proxiesVivos()===0) break;
+      const g=pendientes.slice(i,i+3);
+      await Promise.all(g.map(async x=>{
+        const d=await fetchStock(x.t);
+        if(d._fallo){ sinNada++; }
+        else if(d._viejo){ viejos++; data[x.t]={...(data[x.t]||{}),...d}; }
+        else { nuevos++; data[x.t]={...(data[x.t]||{}),...d}; }
+      }));
+      setL(78+Math.round((i+3)/Math.max(1,pendientes.length)*18),`Reintentando ${Math.min(i+3,pendientes.length)}/${pendientes.length}...`);
+      render();
+      if(i+3<pendientes.length) await sl(700);
+    }
+  } else if(pendientes.length){
+    // No quedan intermediarios vivos: se marcan con lo que hubiera guardado
+    pendientes.forEach(x=>{
+      const q=cG('yq_'+x.t), h=cG('yh_'+x.t);
+      if(q||h){ viejos++; data[x.t]={...(q||{}),...(h||{}),_viejo:true,_ts:cTs('yq_'+x.t)}; }
+      else sinNada++;
+    });
   }
 
-  // ── AVISO HONESTO ──
+  render();
+
+  // 4) AVISO HONESTO
+  const sinActualizar=viejos+sinNada;
   if(nuevos===0){
-    showE('⛔ NO se ha actualizado NADA. Los intermediarios que conectan con Yahoo no responden. '
-      + 'Lo que ves en pantalla son datos guardados de antes. Vuelve a pulsar ↻ Actualizar en unos minutos.');
-  } else if(sinNada>0 || viejos>0){
+    showE('⛔ NO se ha actualizado NADA. Ningun intermediario responde. '
+      + 'Lo que ves son datos guardados de antes. Vuelve a pulsar ↻ Actualizar dentro de unos minutos.');
+  } else if(sinActualizar>0){
     showW(`⚠️ Actualizadas ${nuevos} de ${STOCKS.length}. `
-      + (viejos>0?`${viejos} con datos antiguos (marcadas en gris). `:'')
-      + (sinNada>0?`${sinNada} sin ningún dato. `:'')
+      + (viejos>0?`${viejos} con datos antiguos (en gris con 🕓). `:'')
+      + (sinNada>0?`${sinNada} sin ningun dato. `:'')
       + 'Pulsa ↻ Actualizar para reintentar.');
   }
 
   setL(100,''); await sl(400); setL(-1,'');
 
-  // La hora solo se pone si de verdad se han traído datos nuevos
+  // La hora SOLO se pone si de verdad han entrado datos nuevos
   const cajaUpd=document.getElementById('upd');
   if(nuevos>0){
     cajaUpd.textContent = `Actualizado: ${new Date().toLocaleTimeString('es-ES')}`
-      + ` · ${nuevos}/${STOCKS.length} con datos nuevos`
-      + ((viejos+sinNada)>0?` · ${viejos+sinNada} sin actualizar`:'');
-    cajaUpd.style.color = (viejos+sinNada)>0 ? '#f0c040' : '';
+      + ` · ${nuevos}/${STOCKS.length} al dia`
+      + (sinActualizar>0?` · ${sinActualizar} sin actualizar`:'');
+    cajaUpd.style.color = sinActualizar>0 ? '#f0c040' : '';
   } else {
     cajaUpd.textContent = '⛔ Sin actualizar — datos guardados de antes';
     cajaUpd.style.color = '#ef4444';
