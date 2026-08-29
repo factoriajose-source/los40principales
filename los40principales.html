@@ -116,12 +116,13 @@
 <div class="hdr">
   <div>
     <div class="hdr-t">🔥 <span>Los 40 Principales</span> — Acciones USA</div>
-    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v8 — 29/08/2026</div>
+    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v9 — 29/08/2026</div>
     <div class="hdr-m" id="upd">Conectando...</div>
   </div>
   <div class="hdr-b">
     <button class="btn" style="border-color:#f0c04066;" onclick="openEdit()">✏️ Editar Lista</button>
     <button class="btn" onclick="refreshData()">↻ Actualizar</button>
+    <button class="btn" style="border-color:#38bdf866;" onclick="testProxies()" title="Probar uno a uno los intermediarios">🔧 Test</button>
     <button class="btn btn-go" onclick="exportExcel()">↓ Excel</button>
   </div>
 </div>
@@ -208,8 +209,14 @@
 
 <script>
 // ════════════════════════════════════════════════════════════
-// LOS 40 PRINCIPALES — v8 (29/08/2026) — Yahoo Finance (sin API key)
-// CAMBIOS v8 (lo importante):
+// LOS 40 PRINCIPALES — v9 (29/08/2026) — Yahoo Finance (sin API key)
+// CAMBIOS v9:
+//  - Tiempo de espera 20s para las peticiones en bloque (en la v8 eran 6s
+//    y por eso se caian TODOS los intermediarios: no les daba tiempo)
+//  - Lotes de 6 cuando se pide 1 año (pesa mucho), 15 cuando solo el precio
+//  - Los contadores ya no cuentan la cache como "actualizado"
+//  - Boton 🔧 Test: prueba los intermediarios uno a uno y dice cual funciona
+// CAMBIOS v8:
 //  1. PETICIONES EN BLOQUE: 12 tickers por peticion en vez de 1.
 //     40 acciones pasan de 40 peticiones a 4. Es lo que evita que corten.
 //  2. El intermediario que falla 3 veces SEGUIDAS se descarta y no se
@@ -328,7 +335,12 @@ const PROXIES=[
   {n:'allorigins get',  caido:false, seg:0, f:u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`},
   {n:'cors.workers',    caido:false, seg:0, f:u=>`https://test.cors.workers.dev/?${u}`},
 ];
-const MAX_SEG = 3;          // fallos seguidos antes de descartar un intermediario
+const MAX_SEG = 4;          // fallos seguidos antes de descartar un intermediario
+// Tiempo de espera. Una peticion en bloque de 1 año pesa mucho mas que una
+// suelta, asi que necesita mas margen. En la v8 estaba fijo en 6s y por eso
+// se caian todos los intermediarios: no les daba tiempo a responder.
+const ESPERA_BLOQUE = 20000;
+const ESPERA_SUELTA = 10000;
 let proxyIdx=0;
 let proxyFallos=0, proxyExitos=0;
 
@@ -359,14 +371,15 @@ const sl=ms=>new Promise(r=>setTimeout(r,ms));
 // Pide una URL a Yahoo pasando por un intermediario.
 // UNA sola vuelta: los reintentos se hacen mas arriba, con calma.
 // "valida" comprueba que lo devuelto es de verdad lo que esperabamos.
-async function yFetch(url, valida){
+async function yFetch(url, valida, espera){
   if(proxiesVivos()===0) return null;
+  const ms = espera || ESPERA_SUELTA;
   for(let i=0;i<PROXIES.length;i++){
     const pi=(proxyIdx+i)%PROXIES.length;
     const P=PROXIES[pi];
     if(P.caido) continue;
     try{
-      const r=await fetch(P.f(url),{signal:AbortSignal.timeout(6000)});
+      const r=await fetch(P.f(url),{signal:AbortSignal.timeout(ms)});
       if(!r.ok) throw new Error('http '+r.status);
       let j=await r.json();
       if(j&&j.contents){ j=JSON.parse(j.contents); }
@@ -440,7 +453,9 @@ function calcSerie(ticker, en, price, prevClose, vol, avgVol, conHist){
 // 40 acciones pasan de 40 peticiones a 3 o 4. Es lo que evita que el
 // intermediario nos corte.
 // Si este endpoint no funcionase, se cae solo al metodo antiguo de uno en uno.
-const LOTE = 12;   // tickers por peticion
+const LOTE_PRECIO = 15;  // tickers por peticion cuando solo se pide el precio (5 dias)
+const LOTE_HIST   = 6;   // tickers por peticion cuando se pide 1 año (pesa mucho mas)
+const LOTE = LOTE_PRECIO;  // compatibilidad
 let sparkOK = null;  // null = sin probar, true = funciona, false = no funciona
 
 function sparkParse(j){
@@ -485,7 +500,7 @@ async function fetchLote(tickers, conHist){
   if(sparkOK===false) return {};
   const rango = conHist ? '1y' : '5d';
   const url=`https://query1.finance.yahoo.com/v8/finance/spark?symbols=${tickers.join(',')}&range=${rango}&interval=1d`;
-  const j=await yFetch(url, x=>sparkParse(x)!==null);
+  const j=await yFetch(url, x=>sparkParse(x)!==null, conHist?ESPERA_BLOQUE:ESPERA_SUELTA);
   const parsed = sparkParse(j);
   if(!parsed){ if(sparkOK===null) sparkOK=false; return {}; }
   sparkOK=true;
@@ -515,7 +530,7 @@ async function fetchStock(ticker){
 
   const conHist = !hOk;
   const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=${conHist?'1y':'5d'}`;
-  const j=await yFetch(url, x=>!!x?.chart?.result);
+  const j=await yFetch(url, x=>!!x?.chart?.result, ESPERA_SUELTA);
 
   const guardado=()=>{
     const q=cG(qk), h=cG(hk);
@@ -639,14 +654,14 @@ async function scanOpp(){
   const pend=OPP_ALL().filter(x=>!(data[x.t]&&data[x.t].rsi!=null));
   if(pend.length===0){oppScanning=false;render();return;}
   let done=0, sueltas=[];
-  for(let i=0;i<pend.length;i+=LOTE){
+  for(let i=0;i<pend.length;i+=LOTE_HIST){
     if(proxiesVivos()===0) break;
-    const g=pend.slice(i,i+LOTE);
+    const g=pend.slice(i,i+LOTE_HIST);
     const res=await fetchLote(g.map(x=>x.t), true);
     g.forEach(x=>{ if(res[x.t]) data[x.t]={...(data[x.t]||{}),...res[x.t]}; else sueltas.push(x); done++; });
     setL(Math.round(done/pend.length*85),`💎 Escaneando S&P 500 + ETFs: ${done}/${pend.length}...`);
     if(filt==='OPP') render();
-    if(i+LOTE<pend.length) await sl(600);
+    if(i+LOTE_HIST<pend.length) await sl(600);
   }
   // Las que no vinieron en bloque, de una en una (maximo 30, para no eternizarse)
   const resto=sueltas.slice(0,30);
@@ -685,15 +700,19 @@ async function loadData(){
   });
   render();
 
-  let nuevos=vigentes.length, viejos=0, sinNada=0;
+  // CONTADORES HONESTOS — el cache NO cuenta como "actualizado"
+  const enCache=vigentes.length;   // seguian vigentes, no se pidio nada
+  let nuevos=0;                    // datos traidos de Yahoo AHORA
+  let viejos=0, sinNada=0;
   const pendientes=[];
   const totalPedir=pedirHist.length+pedirSoloPrecio.length;
   let hechos=0;
 
   // 2) PETICIONES EN BLOQUE — varios tickers por peticion
   async function porLotes(lista, conHist){
-    for(let i=0;i<lista.length;i+=LOTE){
-      const grupo=lista.slice(i,i+LOTE);
+    const tam = conHist ? LOTE_HIST : LOTE_PRECIO;
+    for(let i=0;i<lista.length;i+=tam){
+      const grupo=lista.slice(i,i+tam);
       const res=await fetchLote(grupo.map(x=>x.t), conHist);
       grupo.forEach(x=>{
         if(res[x.t]){ data[x.t]={...(data[x.t]||{}),...res[x.t]}; nuevos++; }
@@ -702,7 +721,7 @@ async function loadData(){
       });
       setL(5+Math.round(hechos/Math.max(1,totalPedir)*70),`Cargando en bloque ${hechos}/${totalPedir}...`);
       render();
-      if(i+LOTE<lista.length) await sl(600);
+      if(i+tam<lista.length) await sl(600);
       if(proxiesVivos()===0) break;
     }
   }
@@ -738,32 +757,78 @@ async function loadData(){
 
   // 4) AVISO HONESTO
   const sinActualizar=viejos+sinNada;
-  if(nuevos===0){
+  const cajaUpd=document.getElementById('upd');
+
+  if(totalPedir===0){
+    // No habia nada que pedir: todo seguia vigente en cache
+    cajaUpd.textContent = `Todo al dia · ${enCache}/${STOCKS.length} en cache (menos de 20 min) · pulsa ↻ para forzar`;
+    cajaUpd.style.color = '';
+  } else if(nuevos===0){
     showE('⛔ NO se ha actualizado NADA. Ningun intermediario responde. '
-      + 'Lo que ves son datos guardados de antes. Vuelve a pulsar ↻ Actualizar dentro de unos minutos.');
-  } else if(sinActualizar>0){
-    showW(`⚠️ Actualizadas ${nuevos} de ${STOCKS.length}. `
-      + (viejos>0?`${viejos} con datos antiguos (en gris con 🕓). `:'')
-      + (sinNada>0?`${sinNada} sin ningun dato. `:'')
-      + 'Pulsa ↻ Actualizar para reintentar.');
+      + 'Lo que ves son datos guardados de antes. Prueba el boton 🔧 Test para ver cual falla, '
+      + 'o vuelve a pulsar ↻ Actualizar dentro de unos minutos.');
+    cajaUpd.textContent = '⛔ Sin actualizar — datos guardados de antes';
+    cajaUpd.style.color = '#ef4444';
+  } else {
+    if(sinActualizar>0){
+      showW(`⚠️ Traidas de Yahoo: ${nuevos}. `
+        + (enCache>0?`${enCache} ya estaban al dia. `:'')
+        + (viejos>0?`${viejos} con datos antiguos (en gris con 🕓). `:'')
+        + (sinNada>0?`${sinNada} sin ningun dato. `:'')
+        + 'Pulsa ↻ Actualizar para reintentar.');
+    }
+    cajaUpd.textContent = `Actualizado: ${new Date().toLocaleTimeString('es-ES')}`
+      + ` · ${nuevos} traidas de Yahoo`
+      + (enCache>0?` · ${enCache} en cache`:'')
+      + (sinActualizar>0?` · ${sinActualizar} SIN actualizar`:'');
+    cajaUpd.style.color = sinActualizar>0 ? '#f0c040' : '';
   }
 
   setL(100,''); await sl(400); setL(-1,'');
-
-  // La hora SOLO se pone si de verdad han entrado datos nuevos
-  const cajaUpd=document.getElementById('upd');
-  if(nuevos>0){
-    cajaUpd.textContent = `Actualizado: ${new Date().toLocaleTimeString('es-ES')}`
-      + ` · ${nuevos}/${STOCKS.length} al dia`
-      + (sinActualizar>0?` · ${sinActualizar} sin actualizar`:'');
-    cajaUpd.style.color = sinActualizar>0 ? '#f0c040' : '';
-  } else {
-    cajaUpd.textContent = '⛔ Sin actualizar — datos guardados de antes';
-    cajaUpd.style.color = '#ef4444';
-  }
 }
 
 async function refreshData(){cAll();data={};render();await loadData();}
+
+// ── 🔧 TEST DE INTERMEDIARIOS ──────────────────────────────
+// Prueba los 5 uno por uno con una peticion minima y dice cual funciona,
+// cuanto tarda y quien falla. Sirve para saber a quien echar de la lista.
+async function testProxies(){
+  const card=document.getElementById('lkCard');
+  card.style.display='block';
+  card.innerHTML='🔧 Probando los '+PROXIES.length+' intermediarios, un momento...';
+  const url='https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=5d';
+  const lineas=[];
+  for(let i=0;i<PROXIES.length;i++){
+    const P=PROXIES[i];
+    const t0=Date.now();
+    let res;
+    try{
+      const r=await fetch(P.f(url),{signal:AbortSignal.timeout(12000)});
+      if(!r.ok){ res='❌ error '+r.status; }
+      else{
+        let j=await r.json();
+        if(j&&j.contents) j=JSON.parse(j.contents);
+        res = j?.chart?.result ? '✅ FUNCIONA' : '❌ responde pero no sirve';
+      }
+    }catch(e){
+      res = (e&&e.name==='TimeoutError') ? '❌ demasiado lento (>12s)' : '❌ no responde';
+    }
+    const seg=((Date.now()-t0)/1000).toFixed(1);
+    const ok=res.startsWith('✅');
+    lineas.push(`<div style="margin:2px 0"><b style="font-family:monospace">${P.n}</b> — <span style="color:${ok?'#22c55e':'#ef4444'}">${res}</span> <span style="color:#64748b">(${seg}s)</span></div>`);
+    card.innerHTML='<div style="font-weight:700;margin-bottom:6px">🔧 Test de intermediarios</div>'+lineas.join('')
+      + (i<PROXIES.length-1?'<div style="color:#64748b;margin-top:4px">probando el siguiente...</div>':'');
+    await sl(400);
+  }
+  const buenos=lineas.filter(l=>l.includes('✅')).length;
+  card.innerHTML='<div style="font-weight:700;margin-bottom:6px">🔧 Test de intermediarios</div>'+lineas.join('')
+    + `<div style="margin-top:8px;color:${buenos?'#22c55e':'#ef4444'};font-weight:700">`
+    + (buenos ? `${buenos} de ${PROXIES.length} funcionan — pulsa ↻ Actualizar` 
+              : `Ninguno funciona ahora mismo. Puede ser un corte temporal, tu conexion, o un antivirus/bloqueador de anuncios. Prueba en unos minutos.`)
+    + '</div>';
+  reactivarProxies();
+  proxyFallos=0; proxyExitos=0; pintaProxy();
+}
 
 // ── Excel ─────────────────────────────────────────────────
 function exportExcel(){
