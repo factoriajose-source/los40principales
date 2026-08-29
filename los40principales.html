@@ -116,13 +116,14 @@
 <div class="hdr">
   <div>
     <div class="hdr-t">🔥 <span>Los 40 Principales</span> — Acciones USA</div>
-    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v11 — 29/08/2026</div>
+    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v12 — 29/08/2026</div>
     <div class="hdr-m" id="upd">Conectando...</div>
   </div>
   <div class="hdr-b">
     <button class="btn" style="border-color:#f0c04066;" onclick="openEdit()">✏️ Editar Lista</button>
     <button class="btn" onclick="refreshData()">↻ Actualizar</button>
     <button class="btn" style="border-color:#38bdf866;" onclick="testProxies()" title="Probar uno a uno los intermediarios">🔧 Test</button>
+    <button class="btn" style="border-color:#22c55e66;" onclick="configMiProxy()" title="Configurar tu propio intermediario de Cloudflare">🔑 Mi proxy</button>
     <button class="btn btn-go" onclick="exportExcel()">↓ Excel</button>
   </div>
 </div>
@@ -209,7 +210,12 @@
 
 <script>
 // ════════════════════════════════════════════════════════════
-// LOS 40 PRINCIPALES — v11 (29/08/2026) — Yahoo Finance (sin API key)
+// LOS 40 PRINCIPALES — v12 (29/08/2026) — Yahoo Finance (sin API key)
+// CAMBIOS v12 (tras el segundo test real):
+//  - Solo allorigins llega a Yahoo, y va irregular. cors.lol y whateverorigin
+//    estan muertos: RETIRADOS
+//  - Boton 🔑 Mi proxy: permite pegar la direccion de un intermediario PROPIO
+//    de Cloudflare (gratis). Se usa el primero; los publicos quedan de repuesto
 // CAMBIOS v11 (tras el test real del 29/08):
 //  - CONFIRMADO que Yahoo NO bloquea: allorigins responde en 3s
 //  - Retirados corsproxy.io (piden clave) y cors.workers (no existe)
@@ -349,10 +355,47 @@ function edad(ts){
 const PROXIES=[
   {n:'allorigins raw',  seg:0, pausaHasta:0, f:u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`},
   {n:'allorigins get',  seg:0, pausaHasta:0, f:u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`},
-  {n:'cors.lol',        seg:0, pausaHasta:0, f:u=>`https://api.cors.lol/?url=${encodeURIComponent(u)}`},
-  {n:'whateverorigin',  seg:0, pausaHasta:0, f:u=>`https://whateverorigin.org/get?url=${encodeURIComponent(u)}`},
   {n:'codetabs',        seg:0, pausaHasta:0, f:u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`},
 ];
+
+// ── 🔑 TU PROPIO INTERMEDIARIO (Cloudflare) ────────────────
+// Los intermediarios gratuitos compartidos van fatal. Si te montas el tuyo
+// (gratis, ver el archivo INSTRUCCIONES_CLOUDFLARE.txt) lo pegas con el boton
+// 🔑 y pasa a usarse el PRIMERO, antes que los publicos. Los publicos quedan
+// de repuesto por si el tuyo fallara.
+const LS_PROXY='mi_proxy_url';
+function miProxyURL(){ try{ return localStorage.getItem(LS_PROXY)||''; }catch{ return ''; } }
+function aplicarMiProxy(){
+  if(PROXIES.length && PROXIES[0].propio) PROXIES.shift();
+  const base=miProxyURL();
+  if(base){
+    PROXIES.unshift({
+      n:'MI intermediario', propio:true, seg:0, pausaHasta:0,
+      f:u => base + (base.includes('=') ? '' : '?url=') + encodeURIComponent(u)
+    });
+  }
+  proxyIdx=0;
+}
+function configMiProxy(){
+  const actual=miProxyURL();
+  const v=prompt(
+    'Pega aqui la direccion de TU intermediario de Cloudflare.\n\n'+
+    'Tiene que acabar en  ?url=  , por ejemplo:\n'+
+    '   https://yahoo-proxy.tunombre.workers.dev/?url=\n\n'+
+    '(Para quitarlo: borra el contenido y pulsa Aceptar)',
+    actual);
+  if(v===null) return;
+  const limpio=v.trim();
+  try{
+    if(limpio) localStorage.setItem(LS_PROXY,limpio);
+    else localStorage.removeItem(LS_PROXY);
+  }catch{}
+  aplicarMiProxy();
+  alert(limpio
+    ? 'Guardado:\n'+limpio+'\n\nPulsa 🔧 Test para comprobarlo, y luego ↻ Actualizar.'
+    : 'Quitado. Se usaran solo los intermediarios publicos.');
+}
+
 const MAX_SEG   = 3;      // fallos seguidos antes de mandarlo a descansar
 const DESCANSO  = 45000;  // 45 segundos de descanso, y vuelve a estar disponible
 
@@ -1012,6 +1055,7 @@ async function lookup(){
 }
 
 // ── INICIO ────────────────────────────────────────────────
+aplicarMiProxy();
 render();
 loadData();
 </script>
