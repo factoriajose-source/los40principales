@@ -116,7 +116,7 @@
 <div class="hdr">
   <div>
     <div class="hdr-t">🔥 <span>Los 40 Principales</span> — Acciones USA</div>
-    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v10 — 29/08/2026</div>
+    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v11 — 29/08/2026</div>
     <div class="hdr-m" id="upd">Conectando...</div>
   </div>
   <div class="hdr-b">
@@ -209,7 +209,14 @@
 
 <script>
 // ════════════════════════════════════════════════════════════
-// LOS 40 PRINCIPALES — v10 (29/08/2026) — Yahoo Finance (sin API key)
+// LOS 40 PRINCIPALES — v11 (29/08/2026) — Yahoo Finance (sin API key)
+// CAMBIOS v11 (tras el test real del 29/08):
+//  - CONFIRMADO que Yahoo NO bloquea: allorigins responde en 3s
+//  - Retirados corsproxy.io (piden clave) y cors.workers (no existe)
+//  - Un intermediario que falla ya NO se descarta para siempre: DESCANSA
+//    45 segundos y vuelve. Antes nos quedabamos sin ninguno a mitad de carga
+//  - Hueco minimo de 0,7s entre peticiones para no saturar allorigins
+//  - Hasta 3 rondas de recuperacion de las que fallen, esperando si hace falta
 // CAMBIOS v10:
 //  - Boton 🔧 Test mejorado: hace DOS pruebas por intermediario para
 //    distinguir "el intermediario esta muerto" de "Yahoo le bloquea"
@@ -326,73 +333,104 @@ function edad(ts){
 }
 
 // ── Proxies CORS ───────────────────────────────────────────
-// El navegador no deja pedir datos a Yahoo directamente, hay que pasar por un
-// intermediario. Son servicios gratuitos que se caen y cambian a menudo.
-// NOVEDAD v8: el que falla 3 veces seguidas se DESCARTA para el resto de la
-// sesion. Antes se seguia probando una y otra vez y por eso salian cientos
-// de fallos y la carga no terminaba nunca.
+// El navegador no deja pedir datos a Yahoo directamente: hace falta un
+// intermediario. COMPROBADO 29/08/2026 con el boton Test:
+//   allorigins raw  ✅ funciona (3s) — el bueno
+//   allorigins get  ✅ funciona (5s) — el suplente
+//   corsproxy.io    ❌ error 401: ahora piden clave de pago  → RETIRADO
+//   cors.workers    ❌ ya no existe                          → RETIRADO
+//   codetabs        ❌ se cuelga                             → ultimo recurso
+// Yahoo NO bloquea. El problema es que allorigins es gratuito y va irregular:
+// unas veces contesta en 3s y otras se cuelga.
+//
+// POR ESO: un intermediario que falla NO se descarta para siempre, solo se
+// aparta un rato (descanso). Antes se descartaba y nos quedabamos sin ninguno
+// a mitad de carga.
 const PROXIES=[
-  {n:'allorigins raw',  caido:false, seg:0, f:u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`},
-  {n:'corsproxy.io',    caido:false, seg:0, f:u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`},
-  {n:'codetabs',        caido:false, seg:0, f:u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`},
-  {n:'allorigins get',  caido:false, seg:0, f:u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`},
-  {n:'cors.workers',    caido:false, seg:0, f:u=>`https://test.cors.workers.dev/?${u}`},
+  {n:'allorigins raw',  seg:0, pausaHasta:0, f:u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`},
+  {n:'allorigins get',  seg:0, pausaHasta:0, f:u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`},
+  {n:'cors.lol',        seg:0, pausaHasta:0, f:u=>`https://api.cors.lol/?url=${encodeURIComponent(u)}`},
+  {n:'whateverorigin',  seg:0, pausaHasta:0, f:u=>`https://whateverorigin.org/get?url=${encodeURIComponent(u)}`},
+  {n:'codetabs',        seg:0, pausaHasta:0, f:u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`},
 ];
-const MAX_SEG = 4;          // fallos seguidos antes de descartar un intermediario
+const MAX_SEG   = 3;      // fallos seguidos antes de mandarlo a descansar
+const DESCANSO  = 45000;  // 45 segundos de descanso, y vuelve a estar disponible
+
 // Tiempo de espera. Una peticion en bloque de 1 año pesa mucho mas que una
-// suelta, asi que necesita mas margen. En la v8 estaba fijo en 6s y por eso
-// se caian todos los intermediarios: no les daba tiempo a responder.
-const ESPERA_BLOQUE = 20000;
-const ESPERA_SUELTA = 10000;
+// suelta, asi que necesita mas margen.
+const ESPERA_BLOQUE = 25000;
+const ESPERA_SUELTA = 15000;
+
+// allorigins corta si se le aprieta: se deja siempre un hueco minimo
+// entre dos peticiones seguidas, sean del tipo que sean.
+const HUECO_MIN = 700;
+let ultimaPeticion = 0;
+
 let proxyIdx=0;
 let proxyFallos=0, proxyExitos=0;
 
-function proxiesVivos(){ return PROXIES.filter(p=>!p.caido).length; }
-function reactivarProxies(){ PROXIES.forEach(p=>{p.caido=false;p.seg=0;}); proxyIdx=0; }
+const sl=ms=>new Promise(r=>setTimeout(r,ms));
+
+function proxyLibre(P){ return Date.now() >= P.pausaHasta; }
+function proxiesVivos(){ return PROXIES.filter(proxyLibre).length; }
+function reactivarProxies(){ PROXIES.forEach(p=>{p.pausaHasta=0;p.seg=0;}); proxyIdx=0; }
+// Cuanto falta para que vuelva a haber alguno disponible
+function esperaHastaLibre(){
+  const t=Math.min(...PROXIES.map(p=>p.pausaHasta));
+  return Math.max(0, t-Date.now());
+}
 
 function pintaProxy(){
   const e=document.getElementById('proxy-st');
   if(!e) return;
   const vivos=proxiesVivos();
   if(proxyExitos===0 && proxyFallos===0){e.textContent='';return;}
-  if(vivos===0){
-    e.className='src-er';
-    e.textContent='· ⛔ Ningun intermediario responde — vuelve a intentarlo en unos minutos';
-  } else if(proxyExitos===0){
-    e.className='src-er';
-    e.textContent=`· ⛔ Sin conexion todavia (${proxyFallos} fallos, ${vivos} intermediarios por probar)`;
-  } else {
+  if(proxyExitos>0){
     e.className='src-ok';
     e.textContent=`· ✅ ${PROXIES[proxyIdx].n} · ${proxyExitos} peticiones OK`
       + (proxyFallos?` · ${proxyFallos} fallos`:'')
-      + (vivos<PROXIES.length?` · ${PROXIES.length-vivos} descartados`:'');
+      + (vivos<PROXIES.length?` · ${PROXIES.length-vivos} descansando`:'');
+  } else if(vivos===0){
+    e.className='src-er';
+    e.textContent=`· ⏳ Todos descansando — reintentando en ${Math.ceil(esperaHastaLibre()/1000)}s`;
+  } else {
+    e.className='src-er';
+    e.textContent=`· ⛔ Sin conexion todavia (${proxyFallos} fallos)`;
   }
 }
 
-const sl=ms=>new Promise(r=>setTimeout(r,ms));
-
 // Pide una URL a Yahoo pasando por un intermediario.
-// UNA sola vuelta: los reintentos se hacen mas arriba, con calma.
-// "valida" comprueba que lo devuelto es de verdad lo que esperabamos.
+// Si todos estan descansando, ESPERA a que se libere uno en vez de rendirse.
 async function yFetch(url, valida, espera){
-  if(proxiesVivos()===0) return null;
   const ms = espera || ESPERA_SUELTA;
+
+  if(proxiesVivos()===0){
+    const falta=esperaHastaLibre();
+    if(falta>0 && falta<60000){ pintaProxy(); await sl(falta+200); }
+  }
+
   for(let i=0;i<PROXIES.length;i++){
     const pi=(proxyIdx+i)%PROXIES.length;
     const P=PROXIES[pi];
-    if(P.caido) continue;
+    if(!proxyLibre(P)) continue;
+
+    // Hueco minimo entre peticiones para no saturar
+    const desde=Date.now()-ultimaPeticion;
+    if(desde<HUECO_MIN) await sl(HUECO_MIN-desde);
+    ultimaPeticion=Date.now();
+
     try{
       const r=await fetch(P.f(url),{signal:AbortSignal.timeout(ms)});
       if(!r.ok) throw new Error('http '+r.status);
       let j=await r.json();
       if(j&&j.contents){ j=JSON.parse(j.contents); }
       if(!valida(j)) throw new Error('respuesta no valida');
-      P.seg=0; proxyIdx=pi; proxyExitos++;
+      P.seg=0; P.pausaHasta=0; proxyIdx=pi; proxyExitos++;
       pintaProxy();
       return j;
     }catch{
       proxyFallos++; P.seg++;
-      if(P.seg>=MAX_SEG) P.caido=true;   // descartado: no se vuelve a probar
+      if(P.seg>=MAX_SEG){ P.pausaHasta=Date.now()+DESCANSO; P.seg=0; }
     }
   }
   pintaProxy();
@@ -658,7 +696,6 @@ async function scanOpp(){
   if(pend.length===0){oppScanning=false;render();return;}
   let done=0, sueltas=[];
   for(let i=0;i<pend.length;i+=LOTE_HIST){
-    if(proxiesVivos()===0) break;
     const g=pend.slice(i,i+LOTE_HIST);
     const res=await fetchLote(g.map(x=>x.t), true);
     g.forEach(x=>{ if(res[x.t]) data[x.t]={...(data[x.t]||{}),...res[x.t]}; else sueltas.push(x); done++; });
@@ -669,7 +706,6 @@ async function scanOpp(){
   // Las que no vinieron en bloque, de una en una (maximo 30, para no eternizarse)
   const resto=sueltas.slice(0,30);
   for(let i=0;i<resto.length;i+=3){
-    if(proxiesVivos()===0) break;
     const g=resto.slice(i,i+3);
     await Promise.all(g.map(async x=>{ const d=await fetchStock(x.t); if(!d._fallo) data[x.t]={...(data[x.t]||{}),...d}; }));
     setL(85+Math.round((i+3)/Math.max(1,resto.length)*13),`💎 Rezagadas ${Math.min(i+3,resto.length)}/${resto.length}...`);
@@ -725,36 +761,47 @@ async function loadData(){
       setL(5+Math.round(hechos/Math.max(1,totalPedir)*70),`Cargando en bloque ${hechos}/${totalPedir}...`);
       render();
       if(i+tam<lista.length) await sl(600);
-      if(proxiesVivos()===0) break;
     }
   }
   await porLotes(pedirHist, true);
   if(proxiesVivos()>0) await porLotes(pedirSoloPrecio, false);
 
-  // 3) LAS QUE FALTEN — de una en una, despacio
-  if(pendientes.length && proxiesVivos()>0){
-    setL(78,`Reintentando ${pendientes.length} sueltas...`);
-    for(let i=0;i<pendientes.length;i+=3){
-      if(proxiesVivos()===0) break;
-      const g=pendientes.slice(i,i+3);
+  // 3) LAS QUE FALTEN — hasta 3 rondas, de una en una y despacio.
+  // Si todos los intermediarios estan descansando se ESPERA a que vuelvan,
+  // en vez de darlas por perdidas.
+  let quedan=pendientes.slice();
+  for(let ronda=1; ronda<=3 && quedan.length; ronda++){
+    if(proxiesVivos()===0){
+      const falta=esperaHastaLibre();
+      if(falta>0 && falta<60000){
+        setL(78,`Los intermediarios estan saturados. Esperando ${Math.ceil(falta/1000)}s...`);
+        await sl(falta+300);
+      } else break;
+    }
+    const fallaronAhora=[];
+    setL(78,`Ronda ${ronda}: recuperando ${quedan.length} sueltas...`);
+    for(let i=0;i<quedan.length;i+=2){
+      const g=quedan.slice(i,i+2);
       await Promise.all(g.map(async x=>{
         const d=await fetchStock(x.t);
-        if(d._fallo){ sinNada++; }
-        else if(d._viejo){ viejos++; data[x.t]={...(data[x.t]||{}),...d}; }
+        if(d._viejo || d._fallo){ fallaronAhora.push(x); if(!d._fallo) data[x.t]={...(data[x.t]||{}),...d}; }
         else { nuevos++; data[x.t]={...(data[x.t]||{}),...d}; }
       }));
-      setL(78+Math.round((i+3)/Math.max(1,pendientes.length)*18),`Reintentando ${Math.min(i+3,pendientes.length)}/${pendientes.length}...`);
+      setL(78+Math.round((i+2)/Math.max(1,quedan.length)*6*ronda),
+           `Ronda ${ronda}: ${Math.min(i+2,quedan.length)}/${quedan.length}...`);
       render();
-      if(i+3<pendientes.length) await sl(700);
+      if(i+2<quedan.length) await sl(800);
     }
-  } else if(pendientes.length){
-    // No quedan intermediarios vivos: se marcan con lo que hubiera guardado
-    pendientes.forEach(x=>{
-      const q=cG('yq_'+x.t), h=cG('yh_'+x.t);
-      if(q||h){ viejos++; data[x.t]={...(q||{}),...(h||{}),_viejo:true,_ts:cTs('yq_'+x.t)}; }
-      else sinNada++;
-    });
+    quedan=fallaronAhora;
+    if(quedan.length && ronda<3) await sl(2500);   // respiro entre rondas
   }
+
+  // Lo que no se haya podido recuperar: se muestra lo guardado, marcado
+  quedan.forEach(x=>{
+    const q=cG('yq_'+x.t), h=cG('yh_'+x.t);
+    if(q||h){ viejos++; data[x.t]={...(data[x.t]||{}),...(q||{}),...(h||{}),_viejo:true,_ts:cTs('yq_'+x.t)}; }
+    else sinNada++;
+  });
 
   render();
 
