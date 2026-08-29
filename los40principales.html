@@ -72,6 +72,8 @@
     .sN{color:#fb923c;border-color:#fb923c55;background:#fb923c11;}
     .sR{color:#e879f9;border-color:#e879f955;background:#e879f911;}
     .sF{color:#fbbf24;border-color:#fbbf2455;background:#fbbf2411;}
+    .sSP{color:#94a3b8;border-color:#94a3b855;background:#94a3b811;}
+    .sETF{color:#38bdf8;border-color:#38bdf855;background:#38bdf811;}
     /* MODAL EDICIÓN */
     .modal-bg{position:fixed;inset:0;background:#000a;z-index:200;display:none;align-items:center;justify-content:center;padding:16px;}
     .modal-bg.open{display:flex;}
@@ -107,12 +109,14 @@
   <span style="padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;background:#f0c040;color:#000;border:1px solid #f0c040;">🏢 Acciones</span>
   <span style="color:#1e293b;font-size:18px;">|</span>
   <a href="40_etfs.html" style="padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;background:transparent;color:#64748b;border:1px solid #1e293b;text-decoration:none;transition:all .15s;" onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#64748b'">📊 ETFs</a>
+  <span style="color:#1e293b;font-size:18px;">|</span>
+  <button onclick="setF('OPP')" style="padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;background:transparent;color:#f0c040;border:1px solid #f0c04066;cursor:pointer;font-family:'Inter',sans-serif;">💎 Oportunidades</button>
 </div>
 
 <div class="hdr">
   <div>
     <div class="hdr-t">🔥 <span>Los 40 Principales</span> — Acciones USA</div>
-    <div class="hdr-s">📋 Lista revisada: 01/07/2026</div>
+    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v7 — 29/08/2026</div>
     <div class="hdr-m" id="upd">Conectando...</div>
   </div>
   <div class="hdr-b">
@@ -137,7 +141,6 @@
   <button class="fb" onclick="setF('N')">🟠 Infraestructura</button>
   <button class="fb" onclick="setF('R')">🟣 Robótica</button>
   <button class="fb" onclick="setF('F')">🟡 Fintech</button>
-  <button class="fb" onclick="setF('OPP')" style="border-color:#f0c040;color:#f0c040;">💎 Oportunidades</button>
 </div>
 
 <!-- 🔎 ANALIZADOR DE CUALQUIER ACCIÓN -->
@@ -205,7 +208,13 @@
 
 <script>
 // ════════════════════════════════════════════════════════════
-// LOS 40 PRINCIPALES — v6  Yahoo Finance (sin API key)
+// LOS 40 PRINCIPALES — v7 (29/08/2026) — Yahoo Finance (sin API key)
+// CAMBIOS v7:
+//  1. Ya NO miente: si no consigue datos nuevos lo dice y marca las filas
+//  2. Lista de intermediarios (proxies) corregida y ampliada
+//  3. Peticiones mas ligeras: 5 dias en vez de 1 año cuando solo hace falta el precio
+//  4. Segunda pasada automatica para las que fallen
+//  (NO hay refresco automatico: solo se actualiza al pulsar el boton)
 // ════════════════════════════════════════════════════════════
 const DEFAULT_STOCKS = [
   {t:'NVDA',n:'Nvidia',              s:'S'},{t:'AMD', n:'AMD',              s:'S'},
@@ -231,77 +240,176 @@ const DEFAULT_STOCKS = [
   {t:'SHOP',n:'Shopify',             s:'F'},{t:'FTNT',n:'Fortinet',          s:'F'},
   {t:'UBER',n:'Uber Technologies',   s:'F'},
 ];
-const SN={S:'Semis',I:'IA',C:'Cloud',N:'Infra',R:'Robótica',F:'Fintech'};
+const SN={S:'Semis',I:'IA',C:'Cloud',N:'Infra',R:'Robótica',F:'Fintech',SP:'S&P 500',ETF:'ETF'};
 
 // Lista editable guardada en el navegador
 const LS_LIST='stocks40_list_v1';
 let STOCKS=JSON.parse(localStorage.getItem(LS_LIST))||[...DEFAULT_STOCKS];
 
+// ── 💎 UNIVERSO AMPLIO para el escáner de oportunidades ──
+// ~100 grandes del S&P 500 + 20 ETFs USA (además de tus 40 acciones)
+const UNIVERSE=[
+ {t:'AAPL',n:'Apple'},{t:'BRK-B',n:'Berkshire Hathaway'},{t:'LLY',n:'Eli Lilly'},{t:'V',n:'Visa'},
+ {t:'JPM',n:'JPMorgan'},{t:'WMT',n:'Walmart'},{t:'MA',n:'Mastercard'},{t:'XOM',n:'Exxon Mobil'},
+ {t:'UNH',n:'UnitedHealth'},{t:'PG',n:'Procter & Gamble'},{t:'COST',n:'Costco'},{t:'JNJ',n:'Johnson & Johnson'},
+ {t:'HD',n:'Home Depot'},{t:'NFLX',n:'Netflix'},{t:'BAC',n:'Bank of America'},{t:'ABBV',n:'AbbVie'},
+ {t:'CVX',n:'Chevron'},{t:'KO',n:'Coca-Cola'},{t:'MRK',n:'Merck'},{t:'CRM',n:'Salesforce'},
+ {t:'ADBE',n:'Adobe'},{t:'PEP',n:'PepsiCo'},{t:'TMO',n:'Thermo Fisher'},{t:'CSCO',n:'Cisco'},
+ {t:'ACN',n:'Accenture'},{t:'MCD',n:'McDonalds'},{t:'ABT',n:'Abbott'},{t:'INTC',n:'Intel'},
+ {t:'WFC',n:'Wells Fargo'},{t:'IBM',n:'IBM'},{t:'GE',n:'GE Aerospace'},{t:'QCOM',n:'Qualcomm'},
+ {t:'TXN',n:'Texas Instruments'},{t:'DIS',n:'Disney'},{t:'CAT',n:'Caterpillar'},{t:'VZ',n:'Verizon'},
+ {t:'INTU',n:'Intuit'},{t:'AMGN',n:'Amgen'},{t:'ISRG',n:'Intuitive Surgical'},{t:'PFE',n:'Pfizer'},
+ {t:'GS',n:'Goldman Sachs'},{t:'RTX',n:'RTX Corp'},{t:'BKNG',n:'Booking'},{t:'SPGI',n:'S&P Global'},
+ {t:'HON',n:'Honeywell'},{t:'T',n:'AT&T'},{t:'LOW',n:'Lowes'},{t:'UNP',n:'Union Pacific'},
+ {t:'BLK',n:'BlackRock'},{t:'SYK',n:'Stryker'},{t:'ELV',n:'Elevance'},{t:'TJX',n:'TJX'},
+ {t:'VRTX',n:'Vertex Pharma'},{t:'LMT',n:'Lockheed Martin'},{t:'C',n:'Citigroup'},{t:'BA',n:'Boeing'},
+ {t:'ADI',n:'Analog Devices'},{t:'MS',n:'Morgan Stanley'},{t:'MDT',n:'Medtronic'},{t:'DE',n:'John Deere'},
+ {t:'GILD',n:'Gilead'},{t:'REGN',n:'Regeneron'},{t:'ADP',n:'ADP'},{t:'CDNS',n:'Cadence'},
+ {t:'SNPS',n:'Synopsys'},{t:'BSX',n:'Boston Scientific'},{t:'MMC',n:'Marsh McLennan'},{t:'ETN',n:'Eaton'},
+ {t:'PGR',n:'Progressive'},{t:'SCHW',n:'Charles Schwab'},{t:'CI',n:'Cigna'},{t:'FDX',n:'FedEx'},
+ {t:'NKE',n:'Nike'},{t:'SBUX',n:'Starbucks'},{t:'GM',n:'General Motors'},{t:'F',n:'Ford'},
+ {t:'ANET',n:'Arista Networks'},{t:'APP',n:'AppLovin'},{t:'CEG',n:'Constellation Energy'},{t:'VST',n:'Vistra'},
+ {t:'VRT',n:'Vertiv'},{t:'PWR',n:'Quanta Services'},{t:'HWM',n:'Howmet Aerospace'},{t:'URI',n:'United Rentals'},
+ {t:'ABNB',n:'Airbnb'},{t:'DASH',n:'DoorDash'},{t:'SPOT',n:'Spotify'},{t:'PYPL',n:'PayPal'},
+ {t:'ADSK',n:'Autodesk'},{t:'WDAY',n:'Workday'},{t:'TEAM',n:'Atlassian'},{t:'MDB',n:'MongoDB'},
+ {t:'ON',n:'ON Semiconductor'},{t:'NXPI',n:'NXP Semiconductors'},{t:'MPWR',n:'Monolithic Power'},{t:'TER',n:'Teradyne'},
+ {t:'MCHP',n:'Microchip'},{t:'COHR',n:'Coherent'},{t:'GEV',n:'GE Vernova'},{t:'AXP',n:'American Express'},
+];
+const ETF_USA=[
+ {t:'QQQ',n:'Invesco Nasdaq-100'},{t:'SPY',n:'SPDR S&P 500'},{t:'XLK',n:'Technology SPDR'},
+ {t:'SMH',n:'VanEck Semiconductores'},{t:'SOXX',n:'iShares Semiconductores'},{t:'BOTZ',n:'Global X Robótica'},
+ {t:'AIQ',n:'Global X IA'},{t:'CIBR',n:'First Trust Ciber'},{t:'CLOU',n:'Global X Cloud'},
+ {t:'MAGS',n:'Magnificent 7'},{t:'ARKK',n:'ARK Innovation'},{t:'VGT',n:'Vanguard IT'},
+ {t:'IWM',n:'Russell 2000'},{t:'XLV',n:'Health Care SPDR'},{t:'XLF',n:'Financial SPDR'},
+ {t:'XLE',n:'Energy SPDR'},{t:'GLD',n:'SPDR Gold'},{t:'IBIT',n:'iShares Bitcoin'},
+ {t:'ICLN',n:'iShares Clean Energy'},{t:'HACK',n:'ETFMG Ciber'},
+];
+// Une: tus 40 + universo S&P + ETFs USA (sin duplicados)
+function OPP_ALL(){
+  const seen={}, out=[];
+  STOCKS.forEach(x=>{if(!seen[x.t]){seen[x.t]=1;out.push({...x});}});
+  UNIVERSE.forEach(x=>{if(!seen[x.t]){seen[x.t]=1;out.push({...x,s:'SP'});}});
+  ETF_USA.forEach(x=>{if(!seen[x.t]){seen[x.t]=1;out.push({...x,s:'ETF'});}});
+  return out;
+}
+
 // ── Cache ──────────────────────────────────────────────────
 const TTL_Q = 20*60*1000;   // cotización: 20 min
 const TTL_H = 6*60*60*1000; // histórico:  6 horas
 function cG(k){try{return JSON.parse(localStorage.getItem(k))?.d??null;}catch{return null;}}
+function cTs(k){try{return JSON.parse(localStorage.getItem(k))?.ts??null;}catch{return null;}}
 function cS(k,d,ttl){try{localStorage.setItem(k,JSON.stringify({ts:Date.now(),ttl,d}));}catch{}}
 function cOk(k,ttl){try{const r=JSON.parse(localStorage.getItem(k));return r&&(Date.now()-r.ts)<ttl;}catch{return false;}}
-function cAll(){STOCKS.forEach(x=>{localStorage.removeItem('yq_'+x.t);localStorage.removeItem('yh_'+x.t);});}
+function cAll(){Object.keys(localStorage).forEach(k=>{if(k.startsWith('yq_')||k.startsWith('yh_'))localStorage.removeItem(k);});}
 
-// ── CORS Proxies (se rotan si uno falla) ──────────────────
+// Antigüedad de un dato en texto corto ("hace 4 min", "hace 2 h", "hace 3 d")
+function edad(ts){
+  if(!ts) return 'sin fecha';
+  const m=Math.round((Date.now()-ts)/60000);
+  if(m<1) return 'ahora mismo';
+  if(m<60) return 'hace '+m+' min';
+  const h=Math.round(m/60);
+  if(h<48) return 'hace '+h+' h';
+  return 'hace '+Math.round(h/24)+' d';
+}
+
+// ── Proxies CORS ───────────────────────────────────────────
+// El navegador no deja pedir datos a Yahoo directamente, hay que pasar
+// por un intermediario. Se prueban en orden y se recuerda el que funcionó.
+// OJO: estos servicios son gratuitos y se caen o cambian de formato a menudo.
+// Si un día deja de funcionar todo, lo primero que hay que revisar es esta lista.
 const PROXIES=[
-  u=>`https://corsproxy.io/?${encodeURIComponent(u)}`,
-  u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
-  u=>`https://thingproxy.freeboard.io/fetch/${u}`,
-  u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  {n:'corsproxy.io',    f:u=>`https://corsproxy.io/?url=${encodeURIComponent(u)}`},
+  {n:'allorigins raw',  f:u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`},
+  {n:'codetabs',        f:u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`},
+  {n:'allorigins get',  f:u=>`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`},
+  {n:'cors.workers',    f:u=>`https://test.cors.workers.dev/?${u}`},
 ];
 let proxyIdx=0;
+let proxyFallos=0, proxyExitos=0;
 
-async function yFetch(url){
-  // Intenta los 4 proxies en orden, empieza por el que funcionó la última vez
-  for(let i=0;i<PROXIES.length;i++){
-    const pi=(proxyIdx+i)%PROXIES.length;
-    try{
-      const r=await fetch(PROXIES[pi](url),{signal:AbortSignal.timeout(9000)});
-      if(!r.ok) continue;
-      let j=await r.json();
-      if(j.contents) j=JSON.parse(j.contents); // allorigins wrapper
-      if(j?.chart?.result){
-        proxyIdx=pi; // guardar el que funcionó
-        document.getElementById('proxy-st').textContent=`· Proxy ${pi+1} activo`;
-        return j;
-      }
-    }catch{continue;}
+function pintaProxy(){
+  const e=document.getElementById('proxy-st');
+  if(!e) return;
+  if(proxyExitos===0 && proxyFallos===0){e.textContent='';return;}
+  if(proxyExitos===0){
+    e.className='src-er';
+    e.textContent=`· ⛔ Ningún intermediario responde (${proxyFallos} intentos fallidos)`;
+  } else {
+    e.className='src-ok';
+    e.textContent=`· ✅ Intermediario: ${PROXIES[proxyIdx].n}` + (proxyFallos?`  ·  ${proxyFallos} fallos`:'');
   }
+}
+
+const sl=ms=>new Promise(r=>setTimeout(r,ms));
+
+// Pide una URL a Yahoo pasando por los intermediarios.
+// Da 2 vueltas completas a la lista con una pausa entre medias.
+async function yFetch(url){
+  for(let vuelta=0; vuelta<2; vuelta++){
+    for(let i=0;i<PROXIES.length;i++){
+      const pi=(proxyIdx+i)%PROXIES.length;
+      try{
+        const r=await fetch(PROXIES[pi].f(url),{signal:AbortSignal.timeout(9000)});
+        if(!r.ok){proxyFallos++;continue;}
+        let j=await r.json();
+        if(j&&j.contents){ try{j=JSON.parse(j.contents);}catch{proxyFallos++;continue;} }
+        if(j?.chart?.result){
+          proxyIdx=pi; proxyExitos++;
+          pintaProxy();
+          return j;
+        }
+        proxyFallos++;
+      }catch{proxyFallos++;continue;}
+    }
+    if(vuelta===0) await sl(900);   // respiro antes de reintentar
+  }
+  pintaProxy();
   return null;
 }
 
-// ── Fetch datos de una acción (precio + histórico 1 año) ──
+// ── Fetch datos de una acción ─────────────────────────────
+// Devuelve siempre un objeto con dos marcas de control:
+//   _viejo : true  → NO se pudo actualizar, son datos guardados de antes
+//   _ts    : cuándo se consiguieron esos datos de verdad
+// Si el histórico sigue vigente (6h) solo pide 5 días en vez de 1 año.
+// Eso es unas 10 veces menos datos y hace que los intermediarios no corten.
 async function fetchStock(ticker){
   const qk='yq_'+ticker, hk='yh_'+ticker;
   const qOk=cOk(qk,TTL_Q), hOk=cOk(hk,TTL_H);
-  if(qOk&&hOk) return {...(cG(qk)||{}), ...(cG(hk)||{})};
 
-  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`;
+  // Todo vigente: no se pide nada
+  if(qOk&&hOk) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:false, _ts:cTs(qk)};
+
+  const necesitaHist = !hOk;
+  const rango = necesitaHist ? '1y' : '5d';
+  const url=`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=${rango}`;
   const j=await yFetch(url);
-  if(!j) return {...(cG(qk)||{}), ...(cG(hk)||{})};
+
+  // Sin respuesta: se devuelve lo guardado, PERO marcado como viejo
+  if(!j){
+    const q=cG(qk), h=cG(hk);
+    if(!q&&!h) return {_viejo:true,_ts:null,_fallo:true};
+    return {...(q||{}), ...(h||{}), _viejo:true, _ts:cTs(qk)};
+  }
 
   const chart=j?.chart?.result?.[0];
-  if(!chart) return {};
+  if(!chart) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:true, _ts:cTs(qk), _fallo:!cG(qk)};
   const meta=chart.meta||{};
   const ts=chart.timestamp||[];
   const px=chart.indicators?.quote?.[0]?.close||[];
 
-  // Array de entradas válidas ordenadas del más antiguo al más reciente
   const en=ts.map((t,i)=>({t,p:px[i]})).filter(e=>e.p!=null&&e.p>0);
-  if(en.length<5) return {};
+  const minimo = necesitaHist ? 5 : 2;
+  if(en.length<minimo) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:true, _ts:cTs(qk), _fallo:!cG(qk)};
 
   const last=en.length-1;
-  // Precio actual: usar meta (más preciso en intradía), sino último cierre
   const price=meta.regularMarketPrice||en[last].p;
   const pct=(old)=>old?((price-old)/old*100):null;
 
   // ── Cotización (caché corta) ──
-  // CORRECCIÓN DÍA: usar meta.previousClose (cierre real de ayer, no del array)
-  // meta.previousClose = ayer exacto
-  // meta.chartPreviousClose = hace 1 año (NO usar para día)
+  // meta.previousClose = cierre real de ayer
+  // meta.chartPreviousClose = hace 1 año (NO usar para el dato del día)
   const prevClose = meta.previousClose || en[Math.max(0,last-1)].p;
   const dailyChg = (prevClose && prevClose > 0 && price !== prevClose)
     ? (price - prevClose) / prevClose * 100
@@ -310,49 +418,53 @@ async function fetchStock(ticker){
   const vol=meta.regularMarketVolume||null;
   const avgVol=meta.fiftyDayAverageVolume||null;
 
-  // Validación: precio mínimo razonable para evitar datos erróneos de Yahoo
-  if(!price || price < 0.5) return cG(qk)||{};
+  // Precio absurdo → dato erróneo de Yahoo, nos quedamos con lo anterior
+  if(!price || price < 0.5) return {...(cG(qk)||{}), ...(cG(hk)||{}), _viejo:true, _ts:cTs(qk), _fallo:!cG(qk)};
 
   const qData={price, d:dailyChg, vol, avgVol};
   cS(qk, qData, TTL_Q);
 
   // ── Histórico (caché larga) ──
-  // CORRECCIÓN: usar días NATURALES por timestamp (igual que Investing.com)
-  // Así los festivos (ej: 4 julio) no desplazan la referencia
-  const weekAgo  = Date.now()/1000 - 7*24*3600;
-  const monthAgo = Date.now()/1000 - 30*24*3600;
-  const nearest  = (target) => en.reduce((b,e)=>
-    Math.abs(e.t-target)<Math.abs(b.t-target)?e:b, en[0]);
-  const w = pct(nearest(weekAgo).p);   // semana: 7 días naturales
-  const m = pct(nearest(monthAgo).p);  // mes:    30 días naturales
-  // YTD: primera sesión del año actual
-  const yrStart=new Date(new Date().getFullYear(),0,1).getTime()/1000;
-  const ytdEntry=en.find(e=>e.t>=yrStart);
-  const ytd=ytdEntry?pct(ytdEntry.p):null;
-  // CORRECCIÓN 1 AÑO: buscar timestamp más cercano a hace exactamente 365 días
-  const oneYearAgo = Date.now()/1000 - 365*24*3600;
-  const yrEntry = en.reduce((best,e)=>
-    Math.abs(e.t-oneYearAgo)<Math.abs(best.t-oneYearAgo)?e:best, en[0]);
-  const yr = pct(yrEntry.p);
-  // ── Análisis de oportunidad ──
-  const series=en.map(e=>e.p);
-  if(price!==series[series.length-1]) series.push(price);
-  let redDays=0;
-  for(let i=series.length-1;i>0;i--){ if(series[i]<series[i-1]) redDays++; else break; }
-  let rsi=null;
-  if(series.length>15){
-    let g=0,l=0;
-    for(let i=series.length-14;i<series.length;i++){const chg=series[i]-series[i-1];if(chg>0)g+=chg;else l-=chg;}
-    rsi=l===0?100:Math.round(100-100/(1+g/l));
+  let hData;
+  if(necesitaHist){
+    // Días NATURALES por fecha (igual que Investing.com): así los festivos
+    // no desplazan la referencia
+    const weekAgo  = Date.now()/1000 - 7*24*3600;
+    const monthAgo = Date.now()/1000 - 30*24*3600;
+    const nearest  = (target) => en.reduce((b,e)=>
+      Math.abs(e.t-target)<Math.abs(b.t-target)?e:b, en[0]);
+    const w = pct(nearest(weekAgo).p);
+    const m = pct(nearest(monthAgo).p);
+    const yrStart=new Date(new Date().getFullYear(),0,1).getTime()/1000;
+    const ytdEntry=en.find(e=>e.t>=yrStart);
+    const ytd=ytdEntry?pct(ytdEntry.p):null;
+    const oneYearAgo = Date.now()/1000 - 365*24*3600;
+    const yrEntry = en.reduce((best,e)=>
+      Math.abs(e.t-oneYearAgo)<Math.abs(best.t-oneYearAgo)?e:best, en[0]);
+    const yr = pct(yrEntry.p);
+
+    // ── Análisis de oportunidad ──
+    const series=en.map(e=>e.p);
+    if(price!==series[series.length-1]) series.push(price);
+    let redDays=0;
+    for(let i=series.length-1;i>0;i--){ if(series[i]<series[i-1]) redDays++; else break; }
+    let rsi=null;
+    if(series.length>15){
+      let g=0,l=0;
+      for(let i=series.length-14;i<series.length;i++){const chg=series[i]-series[i-1];if(chg>0)g+=chg;else l-=chg;}
+      rsi=l===0?100:Math.round(100-100/(1+g/l));
+    }
+    const cut30=Date.now()/1000-30*24*3600;
+    const hi30=Math.max(...en.filter(e=>e.t>=cut30).map(e=>e.p),price);
+    const dd=hi30?(price-hi30)/hi30*100:null;
+
+    hData={w,m,ytd,yr,redDays,rsi,dd};
+    cS(hk, hData, TTL_H);
+  } else {
+    hData=cG(hk)||{};
   }
-  const cut30=Date.now()/1000-30*24*3600;
-  const hi30=Math.max(...en.filter(e=>e.t>=cut30).map(e=>e.p),price);
-  const dd=hi30?(price-hi30)/hi30*100:null;
 
-  const hData={w,m,ytd,yr,redDays,rsi,dd};
-  cS(hk, hData, TTL_H);
-
-  return {...qData,...hData};
+  return {...qData,...hData, _viejo:false, _ts:Date.now()};
 }
 
 // ── Score (0-100) ─────────────────────────────────────────
@@ -397,18 +509,34 @@ let data={},col='sc',dir=-1,filt='T';
 
 // ── Render ────────────────────────────────────────────────
 function render(){
-  let rows=STOCKS.map(x=>{const d=data[x.t]||{};const r={...x,...d,sc:score(d)};r.oppSc=oppScore(r);return r;});
-  if(filt==='OPP') rows=rows.filter(r=>r.oppSc>0);
-  else if(filt!=='T') rows=rows.filter(r=>r.s===filt);
-  rows.sort((a,b)=>col==='t'?a.t<b.t?-dir:dir:((a[col]??-9999)-(b[col]??-9999))*dir);
+  let rows;
+  if(filt==='OPP'){
+    rows=OPP_ALL().map(x=>{const d=data[x.t]||{};const r={...x,...d,sc:score(d)};r.oppSc=oppScore(r);return r;})
+      .filter(r=>r.oppSc>0)
+      .sort((a,b)=>b.oppSc-a.oppSc);
+  } else {
+    rows=STOCKS.map(x=>{const d=data[x.t]||{};const r={...x,...d,sc:score(d)};r.oppSc=oppScore(r);return r;});
+    if(filt!=='T') rows=rows.filter(r=>r.s===filt);
+  }
+  if(filt!=='OPP') rows.sort((a,b)=>col==='t'?a.t<b.t?-dir:dir:((a[col]??-9999)-(b[col]??-9999))*dir);
+  if(rows.length===0){
+    document.getElementById('tb').innerHTML = filt==='OPP'
+      ? '<tr><td colspan="11" style="text-align:center;padding:36px 16px;color:#f0c040;line-height:1.8;">💎 <b>Ningún valor cumple ahora los 4 criterios de oportunidad.</b><br><span style="color:#64748b;font-size:12px;">Se escanean tus 40 acciones + ~100 grandes del S&P 500 + 20 ETFs USA (la primera vez tarda 1-2 min, mira la barra de progreso).<br>Es normal ver esto vacío en días de subidas — el radar salta tras 3+ días rojos con RSI en sobreventa.</span></td></tr>'
+      : '<tr><td colspan="11" style="text-align:center;padding:30px;color:#64748b;">Sin valores en este filtro.</td></tr>';
+  } else
   document.getElementById('tb').innerHTML=rows.map((r,i)=>{
     const cl=scl(r.sc);
-    return`<tr class="${r.sc>=70?'ex':''}">
+    // Fila con dato NO actualizado: se marca en gris con un reloj y se puede
+    // ver la antigüedad real pasando el raton por encima
+    const vj = r._viejo===true;
+    const avisoVj = vj ? ` <span title="Dato NO actualizado — ${edad(r._ts)}" style="color:#f0c040;font-size:11px;cursor:help">🕓</span>` : '';
+    const estiloPr = vj ? 'color:#64748b' : '';
+    return`<tr class="${r.sc>=70?'ex':''}"${vj?' style="opacity:.62"':''}>
       <td class="rk">${i+1}</td>
-      <td style="cursor:pointer" onclick="tkSearch('${r.t}')" title="Ver ${r.t} en Investing"><div class="tk ${r.sc>=85?'gl':''}">${r.t}${r.oppSc>0?' 💎':''}</div></td>
-      <td><div class="cn">${r.n}</div></td>
+      <td style="cursor:pointer" onclick="tkSearch('${r.t}')" title="Ver ${r.t} en Investing"><div class="tk ${r.sc>=85?'gl':''}">${r.t}${r.oppSc>0?' 💎':''}${avisoVj}</div></td>
+      <td><div class="cn">${r.n}${vj?' · <span style="color:#f0c040">'+edad(r._ts)+'</span>':''}</div></td>
       <td class="hm"><span class="bg s${r.s}">${SN[r.s]}</span></td>
-      <td class="pr">${r.price!=null?fx(r.price):sk(58)}</td>
+      <td class="pr" style="${estiloPr}">${r.price!=null?fx(r.price):sk(58)}</td>
       <td class="ch ${cc(r.d)}">${r.d!=null?fp(r.d):sk(46)}</td>
       <td class="ch ${cc(r.w)} hm">${r.w!=null?fp(r.w):sk(46)}</td>
       <td class="ch ${cc(r.m)} hm">${r.m!=null?fp(r.m):sk(46)}</td>
@@ -431,10 +559,34 @@ function render(){
 }
 
 function srt(c){dir=col===c?dir*-1:-1;col=c;document.querySelectorAll('thead th').forEach(t=>t.classList.remove('on'));event?.target?.classList?.add('on');render();}
-function setF(f){filt=f;document.querySelectorAll('.fb').forEach(b=>b.classList.remove('on'));event?.target?.classList?.add('on');render();}
+function setF(f){filt=f;document.querySelectorAll('.fb').forEach(b=>b.classList.remove('on'));event?.target?.classList?.add('on');render();if(f==='OPP')scanOpp();}
+
+// ── 💎 Escáner amplio: S&P 500 + ETFs USA + tus 40 ──
+let oppScanning=false;
+async function scanOpp(){
+  if(oppScanning) return;
+  oppScanning=true;
+  const pend=OPP_ALL().filter(x=>!(data[x.t]&&data[x.t].rsi!==undefined&&data[x.t].rsi!==null||data[x.t]&&data[x.t].redDays!==undefined));
+  if(pend.length===0){oppScanning=false;render();return;}
+  let done=0;
+  const B=4;   // menos en paralelo: los intermediarios cortan si se les aprieta
+  for(let i=0;i<pend.length;i+=B){
+    const b=pend.slice(i,i+B);
+    await Promise.all(b.map(async x=>{
+      const d=await fetchStock(x.t);
+      if(!d._fallo) data[x.t]={...(data[x.t]||{}),...d};
+      done++;
+      setL(Math.round(done/pend.length*100),`💎 Escaneando S&P 500 + ETFs: ${done}/${pend.length}...`);
+    }));
+    if(filt==='OPP') render();
+    if(i+B<pend.length) await sl(500);
+  }
+  setL(100,'');await sl(300);setL(-1,'');
+  oppScanning=false;
+  if(filt==='OPP') render();
+}
 
 // ── Carga ─────────────────────────────────────────────────
-const sl=ms=>new Promise(r=>setTimeout(r,ms));
 function setL(p,t){document.getElementById('lb').style.width=Math.max(0,p)+'%';document.getElementById('lt').textContent=p<0?'':t;}
 function showW(m){const e=document.getElementById('bw');e.style.display='block';e.textContent=m;}
 function showE(m){const e=document.getElementById('be');e.style.display='block';e.textContent=m;}
@@ -442,34 +594,73 @@ function showE(m){const e=document.getElementById('be');e.style.display='block';
 async function loadData(){
   document.getElementById('bw').style.display='none';
   document.getElementById('be').style.display='none';
+  proxyFallos=0; proxyExitos=0; pintaProxy();
   setL(3,'Conectando con Yahoo Finance...');
 
-  let done=0,errors=0;
-  const BATCH=5; // 5 en paralelo
+  let done=0;
+  let nuevos=0;    // datos frescos conseguidos ahora
+  let viejos=0;    // no se pudo actualizar, se muestran datos guardados
+  let sinNada=0;   // ni datos nuevos ni guardados
+  const pendientes=[];
+  const BATCH=4;   // 4 en paralelo (antes 5): menos presión sobre el intermediario
 
   for(let i=0;i<STOCKS.length;i+=BATCH){
     const batch=STOCKS.slice(i,i+BATCH);
     await Promise.all(batch.map(async x=>{
       const d=await fetchStock(x.t);
-      if(Object.keys(d).length>0){
-        data[x.t]={...(data[x.t]||{}),...d};
-      } else {errors++;}
+      if(d._fallo){ sinNada++; pendientes.push(x); }
+      else if(d._viejo){ viejos++; pendientes.push(x); data[x.t]={...(data[x.t]||{}),...d}; }
+      else { nuevos++; data[x.t]={...(data[x.t]||{}),...d}; }
       done++;
-      setL(Math.round(done/STOCKS.length*100),`Cargando ${done}/${STOCKS.length}...`);
+      setL(Math.round(done/STOCKS.length*90),`Cargando ${done}/${STOCKS.length}...`);
     }));
     render();
-    if(i+BATCH<STOCKS.length) await sl(300);
+    if(i+BATCH<STOCKS.length) await sl(450);
   }
 
-  if(errors===STOCKS.length){
-    showE('❌ No se pudo conectar con Yahoo Finance. Comprueba tu conexión y pulsa ↻ Actualizar.');
-  } else if(errors>5){
-    showW(`⚠️ ${errors} acciones no cargaron. Pulsa ↻ Actualizar para reintentar.`);
+  // ── SEGUNDA PASADA: reintento solo de las que fallaron ──
+  if(pendientes.length && proxyExitos>0){
+    setL(92,`Reintentando ${pendientes.length} que fallaron...`);
+    await sl(1200);
+    for(let i=0;i<pendientes.length;i+=2){
+      const par=pendientes.slice(i,i+2);
+      await Promise.all(par.map(async x=>{
+        const d=await fetchStock(x.t);
+        if(!d._viejo && !d._fallo){
+          data[x.t]={...(data[x.t]||{}),...d};
+          nuevos++;
+          if(sinNada>0) sinNada--; else viejos--;
+        }
+      }));
+      if(i+2<pendientes.length) await sl(600);
+    }
+    render();
+  }
+
+  // ── AVISO HONESTO ──
+  if(nuevos===0){
+    showE('⛔ NO se ha actualizado NADA. Los intermediarios que conectan con Yahoo no responden. '
+      + 'Lo que ves en pantalla son datos guardados de antes. Vuelve a pulsar ↻ Actualizar en unos minutos.');
+  } else if(sinNada>0 || viejos>0){
+    showW(`⚠️ Actualizadas ${nuevos} de ${STOCKS.length}. `
+      + (viejos>0?`${viejos} con datos antiguos (marcadas en gris). `:'')
+      + (sinNada>0?`${sinNada} sin ningún dato. `:'')
+      + 'Pulsa ↻ Actualizar para reintentar.');
   }
 
   setL(100,''); await sl(400); setL(-1,'');
-  document.getElementById('upd').textContent=
-    `Actualizado: ${new Date().toLocaleTimeString('es-ES')} · Caché: precios 20min · histórico 6h`;
+
+  // La hora solo se pone si de verdad se han traído datos nuevos
+  const cajaUpd=document.getElementById('upd');
+  if(nuevos>0){
+    cajaUpd.textContent = `Actualizado: ${new Date().toLocaleTimeString('es-ES')}`
+      + ` · ${nuevos}/${STOCKS.length} con datos nuevos`
+      + ((viejos+sinNada)>0?` · ${viejos+sinNada} sin actualizar`:'');
+    cajaUpd.style.color = (viejos+sinNada)>0 ? '#f0c040' : '';
+  } else {
+    cajaUpd.textContent = '⛔ Sin actualizar — datos guardados de antes';
+    cajaUpd.style.color = '#ef4444';
+  }
 }
 
 async function refreshData(){cAll();data={};render();await loadData();}
@@ -543,12 +734,15 @@ async function lookup(){
   card.innerHTML='🔎 Analizando <b>'+t+'</b>...';
   const d=await fetchStock(t);
   if(!d||d.price==null){
-    card.innerHTML='❌ No hay datos para "<b>'+t+'</b>". Comprueba el ticker (para Europa añade .DE o .L al final).';
+    card.innerHTML = d&&d._fallo&&proxyExitos===0
+      ? '⛔ No hay conexión con Yahoo ahora mismo (los intermediarios no responden). Prueba de nuevo en unos minutos.'
+      : '❌ No hay datos para "<b>'+t+'</b>". Comprueba el ticker (para Europa añade .DE o .L al final).';
     return;
   }
+  const avisoV = d._viejo ? '<div style="color:#f0c040;margin-bottom:6px;">🕓 Atención: no se pudo actualizar. Estos datos son de '+edad(d._ts)+'.</div>' : '';
   const osc=oppScore(d);
   const why=oppWhy(d).map(x=>'<div>'+x+'</div>').join('');
-  card.innerHTML=`
+  card.innerHTML=avisoV+`
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
       <strong style="font-family:'JetBrains Mono',monospace;font-size:16px;">${t} — ${fx(d.price)}</strong>
       <span style="font-weight:700;color:${osc>0?'#f0c040':'#64748b'}">${osc>0?('💎 OPORTUNIDAD — score '+osc+'/100'):'Sin señal de oportunidad ahora mismo'}</span>
