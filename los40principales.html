@@ -116,7 +116,7 @@
 <div class="hdr">
   <div>
     <div class="hdr-t">🔥 <span>Los 40 Principales</span> — Acciones USA</div>
-    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v9 — 29/08/2026</div>
+    <div class="hdr-s">📋 Lista revisada: 01/07/2026 · v10 — 29/08/2026</div>
     <div class="hdr-m" id="upd">Conectando...</div>
   </div>
   <div class="hdr-b">
@@ -209,7 +209,10 @@
 
 <script>
 // ════════════════════════════════════════════════════════════
-// LOS 40 PRINCIPALES — v9 (29/08/2026) — Yahoo Finance (sin API key)
+// LOS 40 PRINCIPALES — v10 (29/08/2026) — Yahoo Finance (sin API key)
+// CAMBIOS v10:
+//  - Boton 🔧 Test mejorado: hace DOS pruebas por intermediario para
+//    distinguir "el intermediario esta muerto" de "Yahoo le bloquea"
 // CAMBIOS v9:
 //  - Tiempo de espera 20s para las peticiones en bloque (en la v8 eran 6s
 //    y por eso se caian TODOS los intermediarios: no les daba tiempo)
@@ -790,44 +793,81 @@ async function loadData(){
 async function refreshData(){cAll();data={};render();await loadData();}
 
 // ── 🔧 TEST DE INTERMEDIARIOS ──────────────────────────────
-// Prueba los 5 uno por uno con una peticion minima y dice cual funciona,
-// cuanto tarda y quien falla. Sirve para saber a quien echar de la lista.
+// Hace DOS pruebas a cada intermediario:
+//   A) una web cualquiera  → dice si el intermediario esta vivo
+//   B) Yahoo Finance       → dice si Yahoo le deja pasar
+// Con eso se distingue "el intermediario esta muerto" de
+// "el intermediario funciona pero Yahoo le bloquea".
+const URL_SIMPLE = 'https://api.github.com/zen';
+const URL_YAHOO  = 'https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=5d';
+
+async function probarUno(P, url, esYahoo, ms){
+  const t0=Date.now();
+  let txt, ok=false;
+  try{
+    const r=await fetch(P.f(url),{signal:AbortSignal.timeout(ms)});
+    if(!r.ok){ txt='❌ error '+r.status; }
+    else{
+      const cuerpo=await r.text();
+      if(esYahoo){
+        let j=null;
+        try{ j=JSON.parse(cuerpo); if(j&&j.contents) j=JSON.parse(j.contents); }catch{}
+        if(j?.chart?.result){ txt='✅ OK'; ok=true; }
+        else if(/Too Many|rate limit|429/i.test(cuerpo)) txt='❌ Yahoo dice: demasiadas peticiones';
+        else if(/robot|captcha|denied|forbidden|unauthorized/i.test(cuerpo)) txt='❌ Yahoo le bloquea';
+        else txt='❌ responde pero sin datos';
+      } else {
+        if(cuerpo && cuerpo.length>2){ txt='✅ vivo'; ok=true; }
+        else txt='❌ respuesta vacia';
+      }
+    }
+  }catch(e){
+    txt = (e&&e.name==='TimeoutError') ? `❌ colgado (>${ms/1000}s)` : '❌ no responde';
+  }
+  return {txt, ok, seg:((Date.now()-t0)/1000).toFixed(1)};
+}
+
 async function testProxies(){
   const card=document.getElementById('lkCard');
   card.style.display='block';
-  card.innerHTML='🔧 Probando los '+PROXIES.length+' intermediarios, un momento...';
-  const url='https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=5d';
-  const lineas=[];
+  card.innerHTML='🔧 Probando '+PROXIES.length+' intermediarios (2 pruebas cada uno). Tarda un poco...';
+  const filas=[];
+  let vivos=0, conYahoo=0;
+
   for(let i=0;i<PROXIES.length;i++){
     const P=PROXIES[i];
-    const t0=Date.now();
-    let res;
-    try{
-      const r=await fetch(P.f(url),{signal:AbortSignal.timeout(12000)});
-      if(!r.ok){ res='❌ error '+r.status; }
-      else{
-        let j=await r.json();
-        if(j&&j.contents) j=JSON.parse(j.contents);
-        res = j?.chart?.result ? '✅ FUNCIONA' : '❌ responde pero no sirve';
-      }
-    }catch(e){
-      res = (e&&e.name==='TimeoutError') ? '❌ demasiado lento (>12s)' : '❌ no responde';
-    }
-    const seg=((Date.now()-t0)/1000).toFixed(1);
-    const ok=res.startsWith('✅');
-    lineas.push(`<div style="margin:2px 0"><b style="font-family:monospace">${P.n}</b> — <span style="color:${ok?'#22c55e':'#ef4444'}">${res}</span> <span style="color:#64748b">(${seg}s)</span></div>`);
-    card.innerHTML='<div style="font-weight:700;margin-bottom:6px">🔧 Test de intermediarios</div>'+lineas.join('')
-      + (i<PROXIES.length-1?'<div style="color:#64748b;margin-top:4px">probando el siguiente...</div>':'');
-    await sl(400);
+    const a=await probarUno(P, URL_SIMPLE, false, 15000);
+    let b={txt:'— (no se prueba: el intermediario no responde)', ok:false, seg:'0.0'};
+    if(a.ok){ await sl(300); b=await probarUno(P, URL_YAHOO, true, 25000); }
+    if(a.ok) vivos++;
+    if(b.ok) conYahoo++;
+    const col=x=>x.ok?'#22c55e':'#ef4444';
+    filas.push(`<div style="margin:6px 0;padding-bottom:5px;border-bottom:1px solid #1e293b">
+        <b style="font-family:monospace;font-size:13px">${P.n}</b>
+        <div style="margin-left:10px;font-size:12px">1. ¿Esta vivo?  <span style="color:${col(a)}">${a.txt}</span> <span style="color:#64748b">(${a.seg}s)</span></div>
+        <div style="margin-left:10px;font-size:12px">2. ¿Le deja Yahoo?  <span style="color:${col(b)}">${b.txt}</span> <span style="color:#64748b">(${b.seg}s)</span></div>
+      </div>`);
+    card.innerHTML='<div style="font-weight:700;margin-bottom:6px">🔧 Test de intermediarios</div>'+filas.join('')
+      +(i<PROXIES.length-1?'<div style="color:#64748b">probando el siguiente...</div>':'');
+    await sl(300);
   }
-  const buenos=lineas.filter(l=>l.includes('✅')).length;
-  card.innerHTML='<div style="font-weight:700;margin-bottom:6px">🔧 Test de intermediarios</div>'+lineas.join('')
-    + `<div style="margin-top:8px;color:${buenos?'#22c55e':'#ef4444'};font-weight:700">`
-    + (buenos ? `${buenos} de ${PROXIES.length} funcionan — pulsa ↻ Actualizar` 
-              : `Ninguno funciona ahora mismo. Puede ser un corte temporal, tu conexion, o un antivirus/bloqueador de anuncios. Prueba en unos minutos.`)
-    + '</div>';
-  reactivarProxies();
-  proxyFallos=0; proxyExitos=0; pintaProxy();
+
+  let veredicto;
+  if(conYahoo>0){
+    veredicto=`<span style="color:#22c55e">✅ ${conYahoo} de ${PROXIES.length} llegan hasta Yahoo. Pulsa ↻ Actualizar.</span>`;
+  } else if(vivos>0){
+    veredicto=`<span style="color:#f0c040">⚠️ DIAGNOSTICO: ${vivos} intermediarios estan vivos, pero NINGUNO consigue datos de Yahoo.
+      <br>El problema NO son los intermediarios: es Yahoo, que bloquea las conexiones que no vienen de una persona.
+      <br>Cambiar de intermediario no lo va a arreglar. Hay que cambiar de sistema (avisame y lo vemos).</span>`;
+  } else {
+    veredicto=`<span style="color:#ef4444">⛔ Ningun intermediario responde ni siquiera a una web normal.
+      <br>Puede ser un corte temporal, tu conexion, o un antivirus / bloqueador de anuncios cortando estas conexiones.
+      <br>Prueba a desactivar el bloqueador un momento y repetir el test.</span>`;
+  }
+  card.innerHTML='<div style="font-weight:700;margin-bottom:6px">🔧 Test de intermediarios</div>'+filas.join('')
+    +'<div style="margin-top:8px;line-height:1.6">'+veredicto+'</div>';
+
+  reactivarProxies(); proxyFallos=0; proxyExitos=0; pintaProxy();
 }
 
 // ── Excel ─────────────────────────────────────────────────
